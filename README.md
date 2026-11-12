@@ -87,6 +87,14 @@ bin/ci
 check. The API baseline has no browser tests; add system tests only when a
 change introduces browser behaviour.
 
+## AI-assisted development
+
+The repository includes a project-local OpenCode V2 setup and a vendored copy
+of the [object-oriented design skills](https://github.com/yutna/object-oriented-design-skills).
+The agent instructions live in [AGENTS.md](AGENTS.md); usage, provenance and
+update steps are in [docs/opencode.md](docs/opencode.md). The setup is optional:
+the Rails application does not depend on OpenCode.
+
 ## Deployment
 
 The production image uses the included Dockerfile, Thruster and a persistent
@@ -104,10 +112,14 @@ app/mailers         mailers
 config/             environments, routes, deployment and Solid* settings
 db/                 schema, seeds and Solid* database schemas
 test/               Minitest integration and model tests
+docs/               OpenCode and project notes
+.opencode/          OpenCode config and vendored design skills
+AGENTS.md           project instructions loaded by OpenCode
 ```
 
 ## Documentation
 
+- [OpenCode setup](docs/opencode.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Support](SUPPORT.md)
