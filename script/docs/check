@@ -1,0 +1,175 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Checks the architecture specification: every cited rule ID and ADR is
+# defined exactly once, no superseded ADR is cited, and every file stays
+# within its line budget. Run `script/docs/check --root DIR` to check a
+# fixture or another repository root.
+
+require "optparse"
+
+PREFIXES = %w[ARCH API AUTH DATA DOM INT PERF SEC OPS TS GEN WF AI].freeze
+ID_PATTERN = /(?:#{PREFIXES.join("|")}|ADR)-\d{2}/
+RULE_HEADING = /\A### ([A-Z]{2,4})-(\d{2}) — (\S.*?) \((MUST|SHOULD|MAY) · (ADR-\d{2})\)\z/
+ADR_HEADING = /\A### (ADR-\d{2}) — (\S.*)\z/
+STATUS_LINE = /\AStatus:[ \t]*(.*?)[ \t]*\z/
+CITATION = /\b(#{ID_PATTERN})\b/
+SUPERSEDED = /\ASuperseded\b(?:\s+by\s+(ADR-\d{2}))?/
+
+DEFAULT_BUDGET = 400
+FILE_BUDGETS = { "12_enforcement.md" => 600, "13_decisions.md" => 600 }.freeze
+TOTAL_BUDGET = 4_500
+
+# One checked file: its root-relative name and its lines.
+FileLines = Struct.new(:path, :name, :lines, keyword_init: true)
+
+def relative(root, path)
+  path.delete_prefix("#{root}/")
+end
+
+def architecture_files(root)
+  Dir[File.join(root, "docs", "architecture", "*.md")].sort
+end
+
+def control_files(root)
+  paths = %w[AGENTS.md CLAUDE.md].map { |name| File.join(root, name) }
+  paths.concat(Dir[File.join(root, ".opencode", "agents", "*.md")].sort)
+  paths.concat(Dir[File.join(root, "docs", "development", "*.md")].sort)
+  paths.select { |path| File.file?(path) }
+end
+
+def read_files(root, paths)
+  paths.map do |path|
+    FileLines.new(
+      path: path,
+      name: relative(root, path),
+      lines: File.readlines(path, chomp: true)
+    )
+  end
+end
+
+# The status line that follows an ADR heading, if any.
+def adr_status(lines, index)
+  cursor = index + 1
+  cursor += 1 while cursor < lines.length && lines[cursor].strip.empty?
+  match = STATUS_LINE.match(lines[cursor].to_s)
+  match && match[1]
+end
+
+def collect(root)
+  rules = Hash.new { |hash, key| hash[key] = [] }
+  adrs = Hash.new { |hash, key| hash[key] = [] }
+  superseded_by = {}
+  citations = []
+
+  read_files(root, architecture_files(root)).each do |file|
+    file.lines.each_with_index do |line, index|
+      if (match = RULE_HEADING.match(line))
+        rules["#{match[1]}-#{match[2]}"] << "#{file.name}:#{index + 1}"
+        citations << [ match[5], "#{file.name}:#{index + 1}" ]
+      elsif (match = ADR_HEADING.match(line))
+        adrs[match[1]] << "#{file.name}:#{index + 1}"
+        status = adr_status(file.lines, index)
+        if status&.match?(SUPERSEDED)
+          superseded_by[match[1]] = SUPERSEDED.match(status)[1]
+        end
+      else
+        line.scan(CITATION).flatten.each do |id|
+          citations << [ id, "#{file.name}:#{index + 1}" ]
+        end
+      end
+    end
+  end
+
+  read_files(root, control_files(root)).each do |file|
+    file.lines.each_with_index do |line, index|
+      line.scan(CITATION).flatten.each do |id|
+        citations << [ id, "#{file.name}:#{index + 1}" ]
+      end
+    end
+  end
+
+  [ rules, adrs, superseded_by, citations ]
+end
+
+def line_budget_errors(root)
+  errors = []
+  files = read_files(root, architecture_files(root))
+  total = files.sum { |file| file.lines.length }
+
+  files.each do |file|
+    budget = FILE_BUDGETS.fetch(File.basename(file.path), DEFAULT_BUDGET)
+    next unless file.lines.length > budget
+
+    errors << "#{file.name} has #{file.lines.length} lines, budget is #{budget}"
+  end
+  errors << "docs/architecture has #{total} lines, budget is #{TOTAL_BUDGET}" if total > TOTAL_BUDGET
+
+  [ errors, total ]
+end
+
+def count(number, singular, plural)
+  "#{number} #{number == 1 ? singular : plural}"
+end
+
+def summary(files, rules, adrs, total)
+  "docs_check: checked #{count(files, 'file', 'files')}, " \
+    "#{count(rules, 'rule ID', 'rule IDs')} and " \
+    "#{count(adrs, 'ADR', 'ADRs')} (#{total} lines)"
+end
+
+def check(root)
+  files = architecture_files(root)
+  if files.empty?
+    warn "docs_check: no Markdown files in #{relative(root, File.join(root, 'docs', 'architecture'))}"
+    puts summary(0, 0, 0, 0)
+    warn "docs_check: FAILED (1 error)"
+    return 1
+  end
+
+  rules, adrs, superseded_by, citations = collect(root)
+  budget_errors, total = line_budget_errors(root)
+  errors = budget_errors.dup
+
+  { "rule" => rules, "ADR" => adrs }.each do |label, definitions|
+    definitions.each do |id, places|
+      next if places.length == 1
+
+      errors << "#{places.join(', ')}: #{label} #{id} is defined #{places.length} times"
+    end
+  end
+
+  citations.each do |id, location|
+    if id.start_with?("ADR-")
+      unless adrs.key?(id)
+        errors << "#{location}: #{id} is cited but not defined"
+        next
+      end
+      replacement = superseded_by[id]
+      if superseded_by.key?(id)
+        errors << "#{location}: #{id} is superseded#{replacement ? " by #{replacement}" : ''}"
+      end
+    elsif !rules.key?(id)
+      errors << "#{location}: #{id} is cited but not defined"
+    end
+  end
+
+  puts summary(files.length, rules.length, adrs.length, total)
+
+  if errors.empty?
+    puts "docs_check: OK"
+    return 0
+  end
+
+  errors.each { |error| warn "docs_check: #{error}" }
+  warn "docs_check: FAILED (#{errors.length} errors)"
+  1
+end
+
+options = { root: File.expand_path("../..", __dir__) }
+OptionParser.new do |parser|
+  parser.banner = "Usage: docs_check [--root DIR]"
+  parser.on("--root DIR", "Repository root to check") { |value| options[:root] = File.expand_path(value) }
+end.parse!
+
+exit(check(options[:root]))

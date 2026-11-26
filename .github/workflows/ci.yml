@@ -128,6 +128,12 @@ jobs:
       - name: Lead guard canary
         run: script/ci/lead_guard_canary
 
+      - name: Documentation check
+        run: script/docs/check
+
+      - name: Documentation check canary
+        run: script/docs/canary
+
       - name: OpenCode policy check
         run: script/ci/opencode_policy_check
 
