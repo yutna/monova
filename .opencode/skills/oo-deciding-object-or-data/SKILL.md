@@ -3,7 +3,7 @@ name: oo-deciding-object-or-data
 description: Use when deciding if something should be a class or just data, when classes are only getters and setters, or when shaping DTOs and records.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -171,6 +171,11 @@ The view copies three values. `BookingApi` asks the appointment for its
 start and compares it with the clock before it builds the view. The
 appointment's fields are private, so `cancel` is the only place that
 changes `status`, and no field is read before its constructor sets it.
+Both fences give `Appointment` a `startsAt` field and build it without a
+`slot` or a `status` parameter, and the Before adds the screen's `isLate`
+flag. Neither fence shows the store that saves the appointment whole and
+refuses a save made from an older copy, so the second of two
+cancellations that both read `Scheduled` fails there.
 
 ## Red flags
 

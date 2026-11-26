@@ -3,7 +3,7 @@ name: oo-publishing-domain-events
 description: Use when other parts react after a change is saved, when a use case grows a step per reaction, or a message goes out before the change commits.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -260,7 +260,12 @@ After, `run` sends `cancel` once, and `ReleaseSlot.handle` sends
 `release` once for the event that first finds its identity. The
 constructor sets `events` before `cancel` reads it, and `handled` before
 `handle` reads it; every other field arrives from a constructor
-parameter named for it.
+parameter named for it. A store that saves the appointment whole and
+refuses a save made from an older copy is what would refuse a second
+`cancel` call that read the status as `Scheduled`, and a unique index on
+the event's identity in `HandledEvents` is what would refuse the second
+`ReleaseSlot.handle` call that read `handled.contains(id)` as false; this
+fence leaves both out.
 
 ## Red flags
 

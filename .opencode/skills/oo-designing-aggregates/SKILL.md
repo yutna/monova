@@ -3,7 +3,7 @@ name: oo-designing-aggregates
 description: Use when choosing what one transaction keeps consistent, when two people saving at the same time break it, or one load pulls in too much.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -97,6 +97,17 @@ is brought true soon after.
    check refuses the second save; when a rare one can be fixed by hand, a
    check before the change and a later report are enough.
 
+7. Default. **Save an aggregate whole, and have the store refuse a
+   save made from a copy older than the one it holds, such as by a
+   version column, so the second of two changes that read the same
+   state fails instead of overwriting the first.** A rule the
+   aggregate keeps is checked against the copy each change loaded;
+   without that refusal, two people who load the same copy both pass
+   the check, and the later save wins.
+
+   The exception is a change nothing else can run beside, such as a
+   one-off import, which needs no version.
+
 ## Pattern
 
 Before, the enrolment rule lives in a use case that reads the session's
@@ -169,6 +180,8 @@ appending when the room is full, and sends `attendees.add(patient)` once
 otherwise. `EnrolPatient.run` sends one message and decides nothing. When
 a store saves the session whole and refuses a save made from an older
 copy, the second of two enrolments for the last place fails.
+What is stored is the session whole, under its `GroupSessionId`; both
+fences leave the store and the transaction out.
 
 The examples in `notation.md` and `oo-limiting-what-an-object-knows` show
 a slot's syntax or another rule, not a boundary: once a slot is its own
@@ -223,3 +236,4 @@ evidence: a measurement, a reproducible bug, or a failing test.
 
 - [Finding the boundary](references/finding-the-boundary.md)
 - [Consistency across aggregates](references/consistency-across-aggregates.md)
+- [A worked example of rules that conflict](references/worked-example-rules-that-conflict.md)

@@ -3,7 +3,7 @@ name: oo-taming-persistence
 description: Use when choosing active record or a data mapper, when a list fires one query per row, or when lazily loaded data fails outside its session.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -235,7 +235,10 @@ both boundaries out.
 
 Each version changes the status once and stores it once: the Before
 version through `changeStatus` and `save()`, the After version through
-`complete()` and `appointments.save`.
+`complete()` and `appointments.save`. A store that saves the appointment
+whole and refuses a save made from an older copy is what would refuse a
+second `complete` call that read the status as `InProgress`; this fence
+leaves that store and its version check out.
 
 ## Red flags
 

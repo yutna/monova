@@ -3,7 +3,7 @@ name: oo-design
 description: Use when starting a new module, feature or system in an object-oriented codebase, sizing design, or unsure which object rule applies.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -19,9 +19,9 @@ the task and names the skill that fits.
 Load the skill this index names before you answer: its rules and
 examples live there, not here.
 
-Code in a language that has its own skill, listed under
-Language skills, also needs that skill: load it before you
-write the code, whatever the size of the change.
+Code in a language that has its own installed skill, listed under
+Language skills, also needs that skill: load it before you write
+the code, whatever the size of the change.
 
 ## How much design a task warrants
 
@@ -32,7 +32,7 @@ write the code, whatever the size of the change.
 |A feature inside an existing flow|The idiom that flow uses|New boundaries|
 |A new class or module|The design loop|Nothing|
 |A new context|The loop, then its boundaries|Nothing|
-|A new system from nothing|The loop, contexts, then structure|Nothing|
+|A new system|Loop, contexts, then structure; `oo-typescript` walks it|Nothing|
 
 ## Before designing
 
@@ -59,9 +59,10 @@ missing is not design, and this pack cannot supply it.
    and make illegal states impossible to construct
    ([making illegal states impossible](../oo-making-illegal-states-impossible/SKILL.md)).
 5. Invert dependencies so the domain knows nothing of the database or
-   the framework
+   the framework, and test its objects without either
    ([inverting dependencies](../oo-inverting-dependencies/SKILL.md),
-   [layering the system](../oo-layering-the-system/SKILL.md)).
+   [layering the system](../oo-layering-the-system/SKILL.md),
+   [designing for testability](../oo-designing-for-testability/SKILL.md)).
 6. Name things in the domain's words, and comment only what the code
    cannot say
    ([naming classes and methods](../oo-naming-classes-and-methods/SKILL.md),
@@ -227,35 +228,69 @@ skills land.
 ## Language skills
 
 A language skill keeps the core rules in one language and never
-replaces them. A base language skill is for code with no framework.
+replaces them. A framework skill adds only what its framework changes,
+and is loaded with its base language skill.
 
 - `oo-java`, from `object-oriented-design-java`: records, sealed types,
   `equals` and `hashCode`, checked exceptions, `Optional`, and classes
   closed to extension.
+- `oo-java-spring`, from `object-oriented-design-java-spring`: Spring
+  beans built in configuration, `@Transactional` on the use case, and
+  JPA entities that keep their rules.
+- `oo-java-jakarta-ee`, from `object-oriented-design-java-jakarta-ee`:
+  CDI producers, container transactions that roll back refusals, and
+  enterprise beans chosen once.
+- `oo-java-swing`, from `object-oriented-design-java-swing`: the event
+  dispatch thread, passive views with presenters, and table models
+  over screen values.
+- `oo-java-javafx`, from `object-oriented-design-java-javafx`: view
+  models with screen-shaped properties, domain objects no control
+  binds to, and tasks that leave the scene alone.
 - `oo-kotlin`, from `object-oriented-design-kotlin`: data classes,
   sealed types, nullable types, delegation with `by`, and extension
   functions.
 - `oo-typescript`, from `object-oriented-design-typescript`: branded
   identifiers, `#private` state, abstract classes, decorators,
   discriminated unions, and a composition root.
+- `oo-typescript-angular`, from
+  `object-oriented-design-typescript-angular`: service lifetimes set by
+  the injector, shared state with one owner, and ports injected through
+  runtime tokens.
 - `oo-javascript`, from `object-oriented-design-javascript`: contract
   tests, `#private` state, frozen values, and classes rather than
   edited prototypes.
+- `oo-web-components`, from `object-oriented-design-web-components`:
+  two-step construction at the edge, attributes and properties as one
+  protocol, and events instead of calls; loaded with `oo-javascript` or
+  `oo-typescript`, whichever the code is written in.
 - `oo-csharp`, from `object-oriented-design-csharp`: records whose
   copies keep their checks, structs, nullable reference types,
   default interface members, and `async` kept in the shell.
+- `oo-csharp-aspnet`, from `object-oriented-design-csharp-aspnet`:
+  service lifetimes, EF Core entities that keep their rules, and
+  endpoints at the edge.
 - `oo-python`, from `object-oriented-design-python`: protocols and
   abstract base classes, frozen dataclasses, properties without
   setters, mixins and the method resolution order, and `final`.
+- `oo-python-django`, from `object-oriented-design-python-django`:
+  model methods that keep the rules `save()` skips, views and signals
+  with no business logic, and apps as modules.
 - `oo-ruby`, from `object-oriented-design-ruby`: contract tests,
   messages instead of class checks, readers without writers, values
   with `Data`, held objects instead of mixins, and methods defined
   where a reader finds them.
+- `oo-ruby-rails`, from `object-oriented-design-ruby-rails`: models
+  that keep their rules, callbacks with no hidden effects, and service
+  and query objects.
 - A language with no skill of its own reads the nearest shipped one:
   Scala and Groovy read `oo-java`, and PHP reads `oo-python`.
 
 In Claude Code, install a language plugin beside the core one:
 `/plugin install object-oriented-design-java@object-oriented-design-skills`
+
+A framework plugin installs its language plugin and the core one with
+it (checked on Claude Code 2.1.311; on an older version, install those
+too): `/plugin install object-oriented-design-java-spring@object-oriented-design-skills`
 
 ## Quick reference
 
@@ -289,9 +324,28 @@ evidence: a measurement, a reproducible bug, or a failing test.
 - One business rule whose change touches many classes.
 - A test that needs many mocks to check one decision.
 
+## Worked examples
+
+- [A worked example of the design loop](references/worked-example-the-design-loop.md)
+  Read it when a small feature brings classes and rules of its own and
+  the whole loop applies to it.
+- [A worked example of rules that conflict](../oo-designing-aggregates/references/worked-example-rules-that-conflict.md)
+  Read it when two rules pull an aggregate boundary two ways and you
+  must choose one.
+- [A worked example of a fat controller](../oo-refactoring-toward-object-design/references/worked-example-a-fat-controller.md)
+  Read it when a controller holds the flow, the checks and the storage,
+  and you want the commits that take it apart.
+- [A worked example of an anti-corruption layer](../oo-bounding-contexts/references/worked-example-an-anti-corruption-layer.md)
+  Read it when another system's model enters yours and the clinic's
+  answer has to be its own.
+- Read `oo-typescript`'s worked example, in
+  `references/worked-example-a-subsystem.md`, when a subsystem starts
+  from nothing and every layer must be built from the domain out.
+
 ## Further reading
 
 - [Notation](references/notation.md)
 - [The CLAUDE.md block](references/claude-md-block.md)
 - [Pattern index](references/pattern-index.md)
 - [What changed](references/what-changed.md)
+- [A worked example of the design loop](references/worked-example-the-design-loop.md)

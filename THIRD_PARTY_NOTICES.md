@@ -4,7 +4,7 @@
 
 Files under `.opencode/skills/oo-*` are copied from
 [yutna/object-oriented-design-skills](https://github.com/yutna/object-oriented-design-skills)
-v0.17.1 (commit `453834912b1b907cdc1064f8e75bb17916dd3318`).
+v1.0.1 (commit `d78a95f03cb8bfefadb13ef487d23bc74d7a9fc5`).
 
 MIT License
 
