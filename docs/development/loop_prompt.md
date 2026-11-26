@@ -20,6 +20,11 @@ Implementer worktrees live in `$STATE/worktrees/<N>`.
    Review it (protocol §6). Approved and CI green: merge, remove its
    worktree, close nothing else. Changes requested: dispatch the
    `fixer` (below) with `PR #<P> round <K>`.
+   A Dependabot pull request is reviewed the same way: a patch or minor
+   update with green CI and no breaking note in its changelog gets the
+   lowest open version milestone and is merged; a major update or a red
+   one becomes a `work_item` issue for the implementer, and the
+   Dependabot pull request is closed with a link to it.
 3. **Blocked issue.** An issue labelled `blocked` with a question from
    the implementer. If the decision is yours (anything outside protocol
    §8), decide, update the issue body, remove `blocked`, comment the
