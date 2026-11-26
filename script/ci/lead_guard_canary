@@ -51,6 +51,10 @@ def wiring_errors(settings_path)
     return [ "#{settings_path} is not valid JSON: #{error.message}" ]
   end
 
+  if data.is_a?(Hash) && data["disableAllHooks"] == true
+    return [ "disableAllHooks is true, so Claude Code runs no hooks" ]
+  end
+
   hooks = data.is_a?(Hash) ? data["hooks"] : nil
   entries = hooks.is_a?(Hash) ? Array(hooks["PreToolUse"]) : []
   matchers = entries.filter_map do |entry|
@@ -165,6 +169,10 @@ Dir.mktmpdir("monova-lead-guard-settings") do |settings_dir|
     end
   end
   settings_cases << [ "a copy without the lead_guard entry fails", without_entry, true ]
+
+  hooks_disabled = Marshal.load(Marshal.dump(source_settings))
+  hooks_disabled["disableAllHooks"] = true
+  settings_cases << [ "a copy that disables all hooks fails", hooks_disabled, true ]
 
   WIRING_TOOLS.each do |dropped|
     copy = Marshal.load(Marshal.dump(source_settings))
