@@ -4,7 +4,7 @@ CI.run do
   step "Setup", "bin/setup --skip-server"
 
   step "Style: Ruby", "bin/rubocop"
-  step "Style: Markdown", "test -d node_modules || npm ci && npm run lint:md"
+  step "Style: Markdown", "test node_modules -nt package-lock.json || npm ci && npm run lint:md"
 
   step "Guards: Lead guard canary", "script/ci/lead_guard_canary"
   step "Guards: OpenCode policy", "script/ci/opencode_policy_check"
