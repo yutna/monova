@@ -9,6 +9,7 @@ CI.run do
   step "Guards: Lead guard canary", "script/ci/lead_guard_canary"
   step "Guards: OpenCode policy", "script/ci/opencode_policy_check"
   step "Guards: OpenCode policy canary", "script/ci/opencode_policy_check --canary"
+  step "Tests: Loop driver", "script/loop/test"
 
   step "Security: Gem audit", "bin/bundler-audit"
   step "Security: Brakeman code analysis", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"

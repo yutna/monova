@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# One tick of the Monova unattended loop (protocol §5 and §9).
+#
+# Starts at most one fresh headless lead run, records its rate limit
+# event and result, and pauses the loop when the repository stops
+# changing. The self-test in script/loop/test drives every branch.
+set -euo pipefail
+
+SELF=$(readlink -f -- "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(dirname -- "$SELF")
+REPO=${MONOVA_LOOP_REPO:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}
+STATE=${MONOVA_LOOP_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/monova-loop}
+RUNS=$STATE/runs
+LOCK=$STATE/lock
+LOG=$STATE/loop.log
+BUDGET=$STATE/budget.json
+PAUSED=$STATE/PAUSED
+STOP=$STATE/STOP
+PROGRESS=$STATE/progress.hash
+IDLE_COUNT=$STATE/idle.count
+
+export PATH="$HOME/.opencode/bin:$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
+
+mkdir -p -- "$RUNS"
+touch -- "$LOG"
+
+log() {
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"
+}
+
+iso() {
+  date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ
+}
+
+if [[ -e "$STOP" ]]; then
+  exit 0
+fi
+
+# Hold the lock for the whole tick. Children get the descriptor closed
+# so a long run, or anything it starts, cannot hold the lock after us.
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  log "status=skip reason=locked"
+  exit 0
+fi
+
+if [[ -e "$PAUSED" ]]; then
+  log "status=skip reason=paused"
+  exit 0
+fi
+
+now=$(date +%s)
+weekly_stop=${MONOVA_WEEKLY_STOP:-0.95}
+if [[ -f "$BUDGET" ]] && jq -e . "$BUDGET" >/dev/null 2>&1; then
+  if jq -e --argjson stop "$weekly_stop" --argjson now "$now" \
+    '((.seven_day.utilization // 0) >= $stop) and
+     ((.seven_day.resetsAt // 0) > $now)' "$BUDGET" >/dev/null 9>&-; then
+    log "status=skip reason=weekly_budget" \
+      "seven_day=$(jq -r '.seven_day.utilization' "$BUDGET" 9>&-)" \
+      "resets=$(iso "$(jq -r '.seven_day.resetsAt // 0' "$BUDGET" 9>&-)")"
+    exit 0
+  fi
+  five_status=$(jq -r '.five_hour.status // "allowed"' "$BUDGET" 9>&-)
+  five_reset=$(jq -r '.five_hour.resetsAt // 0' "$BUDGET" 9>&-)
+  if [[ "$five_status" != "allowed" ]] && (( five_reset > now )); then
+    log "status=skip reason=five_hour" \
+      "five_hour_status=$five_status" "resets=$(iso "$five_reset")"
+    exit 0
+  fi
+fi
+
+if ! git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 9>&-; then
+  log "status=skip reason=no_repository repo=$REPO"
+  exit 0
+fi
+
+branch=$(git -C "$REPO" symbolic-ref --quiet --short HEAD 9>&- || true)
+if [[ "$branch" != "main" ]]; then
+  log "status=skip reason=not_main branch=${branch:-detached}"
+  exit 0
+fi
+
+if [[ -n "$(git -C "$REPO" status --porcelain 9>&-)" ]]; then
+  log "status=skip reason=dirty_tree"
+  exit 0
+fi
+
+if ! pull_output=$(git -C "$REPO" pull --ff-only --quiet 2>&1 9>&-); then
+  log "status=skip reason=pull_failed detail=${pull_output//$'\n'/ }"
+  exit 0
+fi
+
+prompt_file=$REPO/docs/development/loop_prompt.md
+if [[ ! -f "$prompt_file" ]]; then
+  log "status=skip reason=missing_prompt path=$prompt_file"
+  exit 0
+fi
+
+stream=$(mktemp -- "$RUNS/$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX.jsonl")
+timeout_seconds=${MONOVA_LOOP_TIMEOUT:-10800}
+claude_bin=${MONOVA_LOOP_CLAUDE:-claude}
+
+rc=0
+(
+  cd "$REPO" || exit 1
+  exec timeout "$timeout_seconds" "$claude_bin" -p "$(cat "$prompt_file")" \
+    --output-format stream-json --verbose \
+    --permission-mode bypassPermissions 9>&- >"$stream" 2>&1
+) || rc=$?
+
+result_line=$(jq -Rc 'fromjson? | select(.type == "result")' "$stream" 9>&- | tail -n 1)
+rate_line=$(jq -Rc 'fromjson? | select(.type == "rate_limit_event")' "$stream" 9>&- | tail -n 1)
+
+if [[ -n "$rate_line" ]] &&
+  jq -e '.rate_limit_info.unifiedWindows != null' <<<"$rate_line" >/dev/null 9>&-; then
+  tmp=$BUDGET.tmp.$$
+  jq '.rate_limit_info.unifiedWindows' <<<"$rate_line" 9>&- >"$tmp"
+  mv -f -- "$tmp" "$BUDGET"
+fi
+
+five_util="-"
+seven_util="-"
+if [[ -f "$BUDGET" ]]; then
+  five_util=$(jq -r '.five_hour.utilization // "-"' "$BUDGET" 2>/dev/null 9>&- || echo "-")
+  seven_util=$(jq -r '.seven_day.utilization // "-"' "$BUDGET" 2>/dev/null 9>&- || echo "-")
+fi
+
+is_error=missing
+num_turns=0
+cost=0
+if [[ -n "$result_line" ]]; then
+  is_error=$(jq -r '.is_error // false' <<<"$result_line" 9>&-)
+  num_turns=$(jq -r '.num_turns // 0' <<<"$result_line" 9>&-)
+  cost=$(jq -r '.total_cost_usd // 0' <<<"$result_line" 9>&-)
+fi
+
+status=ok
+if (( rc == 124 )); then
+  status=timeout
+elif (( rc != 0 )); then
+  status=failed
+elif [[ "$is_error" != "false" ]]; then
+  status=error
+fi
+
+log "status=$status exit=$rc is_error=$is_error num_turns=$num_turns" \
+  "cost_usd=$cost five_hour=$five_util seven_day=$seven_util"
+
+progress_hash() (
+  exec 9>&-
+  {
+    git -C "$REPO" rev-parse origin/main 2>/dev/null || echo "no-main"
+    gh issue list --state open --json number,state,labels,updatedAt \
+      --limit 100 2>/dev/null || echo "issue-list-failed"
+    gh pr list --state open --json number,state,labels,updatedAt \
+      --limit 100 2>/dev/null || echo "pr-list-failed"
+  } | sha256sum | awk '{print $1}'
+)
+
+implementer_pid=""
+if [[ -f "$STATE/implementer.pid" ]]; then
+  implementer_pid=$(tr -cd '0-9' <"$STATE/implementer.pid")
+fi
+
+if [[ -n "$implementer_pid" ]] && kill -0 "$implementer_pid" 2>/dev/null; then
+  log "status=progress_skipped reason=implementer_running pid=$implementer_pid"
+else
+  hash=$(progress_hash)
+  previous=$(cat "$PROGRESS" 2>/dev/null || true)
+  if [[ -n "$previous" && "$hash" == "$previous" ]]; then
+    count=$(cat "$IDLE_COUNT" 2>/dev/null || echo 0)
+    count=$((count + 1))
+  else
+    count=0
+  fi
+  printf '%s\n' "$hash" >"$PROGRESS"
+  printf '%s\n' "$count" >"$IDLE_COUNT"
+
+  idle_limit=${MONOVA_LOOP_IDLE:-3}
+  if (( count >= idle_limit )); then
+    printf 'no progress in %s consecutive runs; remove this file to resume\n' \
+      "$count" >"$PAUSED"
+    log "status=paused reason=no_progress idle=$count"
+  fi
+fi
+
+exit "$rc"

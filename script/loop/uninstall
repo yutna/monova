@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Stop and remove the Monova loop timer. State and worktrees are kept.
+set -euo pipefail
+
+UNIT_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
+STATE=${MONOVA_LOOP_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/monova-loop}
+
+systemctl --user disable --now monova-loop.timer 2>/dev/null || true
+rm -f -- "$UNIT_DIR/monova-loop.timer" "$UNIT_DIR/monova-loop.service"
+systemctl --user daemon-reload
+
+printf 'removed. State and worktrees are kept in %s\n' "$STATE"
