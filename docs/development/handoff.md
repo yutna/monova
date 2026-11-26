@@ -41,7 +41,7 @@ by purpose with a comment per group; the RSpec ecosystem used fully
 rubocop-rspec and friends), each justified in the testing file.
 
 Markdown: `markdownlint-cli2` with default rules and no rule overrides.
-Node 26.13.1 (latest LTS) and Ruby 4.0.9 pinned in `mise.toml`.
+Node 26.13.1 (latest LTS) and Ruby 4.0.10 pinned in `mise.toml`.
 
 ## Specification outline
 
