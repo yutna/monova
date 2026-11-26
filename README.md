@@ -40,7 +40,9 @@ all meant to be replaced.
 
 ## Requirements
 
-- Ruby 4.0.10
+- mise
+- Ruby 4.0.10 (installed by mise)
+- Node 26.13.1 (installed by mise)
 - SQLite 3.8 or newer
 - libvips (for Active Storage variants)
 - Docker (optional, for container builds)

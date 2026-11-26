@@ -21,6 +21,9 @@ Thumbs.db
 # Ignore bundler config.
 /.bundle
 
+# Ignore npm dependencies.
+/node_modules
+
 # Ignore all logfiles and tempfiles.
 /log/*
 /tmp/*

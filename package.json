@@ -1,0 +1,21 @@
+{
+  "name": "monova",
+  "private": true,
+  "description": "Lint tooling for the Monova template's Markdown files.",
+  "engines": {
+    "node": "26.13.1"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "26.13.1",
+      "onFail": "warn"
+    }
+  },
+  "scripts": {
+    "lint:md": "markdownlint-cli2 \"**/*.md\""
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "0.24.2"
+  }
+}
