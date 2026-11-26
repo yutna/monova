@@ -31,9 +31,11 @@ touch "${XDG_STATE_HOME:-$HOME/.local/state}/monova-loop/STOP"
 
 The next tick exits at once. Remove the file to resume.
 
-The driver also writes `PAUSED` after three consecutive runs that leave
-`origin/main` and the open issues and pull requests unchanged. Remove
-`PAUSED` to resume.
+The driver also writes `PAUSED` after three consecutive runs whose
+progress hash equals the previous run's. The hash covers `origin/main`
+and the open issues and pull requests. A tick while `implementer.pid`
+names a live process does not count towards that limit. Remove `PAUSED`
+to resume.
 
 ## Logs and state
 
@@ -45,6 +47,7 @@ The state directory is
 | `loop.log` | one line per tick: status, exit code, turns, cost |
 | `runs/` | the event stream of each headless run |
 | `budget.json` | the last run's rate limit windows |
+| `implementer.pid` | the live implementer, written by the lead |
 | `STOP` | presence stops the loop |
 | `PAUSED` | presence stops runs until removed |
 | `progress.hash`, `idle.count` | the progress check |

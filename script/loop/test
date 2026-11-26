@@ -48,6 +48,14 @@ expect_file() { # name path
   fi
 }
 
+expect_no_file() { # name path
+  if [[ -e "$2" ]]; then
+    fail "$1 (found $2)"
+  else
+    pass "$1"
+  fi
+}
+
 expect_log() { # name text
   if grep -qF -- "$2" "$CASE/state/loop.log" 2>/dev/null; then
     pass "$1"
@@ -97,6 +105,9 @@ set -euo pipefail
 if [[ -n "${FAKE_CLAUDE_SLEEP:-}" ]]; then
   exec sleep "$FAKE_CLAUDE_SLEEP"
 fi
+if [[ -n "${FAKE_CLAUDE_PWD_FILE:-}" ]]; then
+  printf '%s\n' "$PWD" >"$FAKE_CLAUDE_PWD_FILE"
+fi
 printf '%s\n' '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.14,"resetsAt":9999999999,"status":"allowed"},"seven_day":{"utilization":0.11,"resetsAt":9999999999,"status":"allowed"}}}}'
 printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"num_turns":7,"total_cost_usd":0.125,"usage":{}}'
 exit "${FAKE_CLAUDE_EXIT:-0}"
@@ -126,7 +137,7 @@ new_case() { # name
   export PATH=$CASE/bin:$BASE_PATH
   unset MONOVA_LOOP_TIMEOUT MONOVA_LOOP_IDLE MONOVA_WEEKLY_STOP
   unset MONOVA_LOOP_CLAUDE FAKE_CLAUDE_EXIT FAKE_CLAUDE_SLEEP
-  unset FAKE_ISSUES FAKE_PRS
+  unset FAKE_CLAUDE_PWD_FILE FAKE_ISSUES FAKE_PRS
   make_repo "$CASE/repo" "$CASE/remote.git"
   make_fakes
 }
@@ -208,16 +219,60 @@ expect_log "a run writes one log line with the result" \
 
 new_case idle
 run_driver
+expect_eq "a first run records an idle count of zero" "0" \
+  "$(cat "$CASE/state/idle.count")"
 run_driver
 run_driver
-expect_eq "three idle runs exit 0" 0 "$RC"
-expect_file "three idle runs write PAUSED" "$CASE/state/PAUSED"
-expect_log "three idle runs log the pause" "reason=no_progress idle=3"
-expect_runs "three idle runs start three runs" 3
+expect_eq "two unchanged runs exit 0" 0 "$RC"
+expect_eq "two unchanged runs count two" "2" "$(cat "$CASE/state/idle.count")"
+expect_no_file "two unchanged runs do not pause" "$CASE/state/PAUSED"
+run_driver
+expect_eq "a third unchanged run exits 0" 0 "$RC"
+expect_file "a third unchanged run writes PAUSED" "$CASE/state/PAUSED"
+expect_log "a third unchanged run logs the pause" "reason=no_progress idle=3"
+expect_runs "four runs start in the idle case" 4
 run_driver
 expect_eq "a paused loop skips with exit 0" 0 "$RC"
-expect_runs "a paused loop starts no new run" 3
+expect_runs "a paused loop starts no new run" 4
 expect_log "a paused loop logs the reason" "reason=paused"
+
+new_case idle-reset
+run_driver
+export FAKE_ISSUES='[{"number":9,"state":"OPEN","labels":[],"updatedAt":"2026-11-26T00:00:00Z"}]'
+run_driver
+expect_eq "a changed hash resets the idle count" "0" \
+  "$(cat "$CASE/state/idle.count")"
+run_driver
+run_driver
+expect_eq "a change and two unchanged runs count two" "2" \
+  "$(cat "$CASE/state/idle.count")"
+expect_no_file "a change and two unchanged runs do not pause" \
+  "$CASE/state/PAUSED"
+
+new_case implementer
+run_driver
+printf '%s\n' "$$" >"$CASE/state/implementer.pid"
+run_driver
+run_driver
+expect_eq "a live implementer is not counted as idle" "0" \
+  "$(cat "$CASE/state/idle.count")"
+expect_no_file "a live implementer does not pause" "$CASE/state/PAUSED"
+expect_log "a live implementer logs the skipped progress count" \
+  "reason=implementer_running pid=$$"
+rm -f -- "$CASE/state/implementer.pid"
+run_driver
+expect_eq "the idle count resumes after the implementer exits" "1" \
+  "$(cat "$CASE/state/idle.count")"
+
+new_case cwd
+export FAKE_CLAUDE_PWD_FILE=$CASE/claude.pwd
+set +e
+(cd "$CASE" && "$DRIVER") >"$CASE/driver.out" 2>&1
+RC=$?
+set -e
+expect_eq "a run exits 0 from another directory" 0 "$RC"
+expect_eq "a run starts in the repository" "$CASE/repo" \
+  "$(cat "$CASE/claude.pwd" 2>/dev/null || true)"
 
 new_case timeout
 export MONOVA_LOOP_TIMEOUT=1

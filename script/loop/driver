@@ -101,9 +101,12 @@ timeout_seconds=${MONOVA_LOOP_TIMEOUT:-10800}
 claude_bin=${MONOVA_LOOP_CLAUDE:-claude}
 
 rc=0
-timeout "$timeout_seconds" "$claude_bin" -p "$(cat "$prompt_file")" \
-  --output-format stream-json --verbose \
-  --permission-mode bypassPermissions 9>&- >"$stream" 2>&1 || rc=$?
+(
+  cd "$REPO" || exit 1
+  exec timeout "$timeout_seconds" "$claude_bin" -p "$(cat "$prompt_file")" \
+    --output-format stream-json --verbose \
+    --permission-mode bypassPermissions 9>&- >"$stream" 2>&1
+) || rc=$?
 
 result_line=$(jq -Rc 'fromjson? | select(.type == "result")' "$stream" 9>&- | tail -n 1)
 rate_line=$(jq -Rc 'fromjson? | select(.type == "rate_limit_event")' "$stream" 9>&- | tail -n 1)
@@ -154,22 +157,31 @@ progress_hash() (
   } | sha256sum | awk '{print $1}'
 )
 
-hash=$(progress_hash)
-previous=$(cat "$PROGRESS" 2>/dev/null || true)
-if [[ -n "$previous" && "$hash" == "$previous" ]]; then
-  count=$(cat "$IDLE_COUNT" 2>/dev/null || echo 0)
-  count=$((count + 1))
-else
-  count=1
+implementer_pid=""
+if [[ -f "$STATE/implementer.pid" ]]; then
+  implementer_pid=$(tr -cd '0-9' <"$STATE/implementer.pid")
 fi
-printf '%s\n' "$hash" >"$PROGRESS"
-printf '%s\n' "$count" >"$IDLE_COUNT"
 
-idle_limit=${MONOVA_LOOP_IDLE:-3}
-if (( count >= idle_limit )); then
-  printf 'no progress in %s consecutive runs; remove this file to resume\n' \
-    "$count" >"$PAUSED"
-  log "status=paused reason=no_progress idle=$count"
+if [[ -n "$implementer_pid" ]] && kill -0 "$implementer_pid" 2>/dev/null; then
+  log "status=progress_skipped reason=implementer_running pid=$implementer_pid"
+else
+  hash=$(progress_hash)
+  previous=$(cat "$PROGRESS" 2>/dev/null || true)
+  if [[ -n "$previous" && "$hash" == "$previous" ]]; then
+    count=$(cat "$IDLE_COUNT" 2>/dev/null || echo 0)
+    count=$((count + 1))
+  else
+    count=0
+  fi
+  printf '%s\n' "$hash" >"$PROGRESS"
+  printf '%s\n' "$count" >"$IDLE_COUNT"
+
+  idle_limit=${MONOVA_LOOP_IDLE:-3}
+  if (( count >= idle_limit )); then
+    printf 'no progress in %s consecutive runs; remove this file to resume\n' \
+      "$count" >"$PAUSED"
+    log "status=paused reason=no_progress idle=$count"
+  fi
 fi
 
 exit "$rc"
