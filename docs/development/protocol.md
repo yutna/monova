@@ -61,6 +61,9 @@ lead reviews it as one and says so in the review.
   that proves each one, `Depends on`.
 - An issue is small enough for one pull request and one implementer
   session. A bigger one is split before dispatch.
+- Every criterion is runnable by the implementer under its policies and
+  environment; the lead runs the ones it can before filing. A new gate
+  is enabled only after the lead's own files pass it.
 
 ## 5. The loop
 

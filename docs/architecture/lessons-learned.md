@@ -40,3 +40,29 @@ the rest.
 before any issue that depends on their guards is dispatched. The shell
 check stays "enforced" only for the probed cases; anything else is
 review (§10).
+
+## 2026-11-26 — v0.3.0 — #13, #15, #16 (pilot issues)
+
+**What happened.** Three implementer issues ran through the loop with
+zero review rounds. Each stopped correctly once at a boundary instead of
+guessing: #13 found a Ruby CVE outside its scope, #15 found lint errors
+in a lead-owned file it may not edit. Three acceptance criteria written
+by the lead could not pass: `ruby -v` resolved the host's global mise
+pin, `opencode debug` is denied by the implementer's own policy, and the
+lint gate failed on the lead's control files.
+
+**Root cause.** The lead wrote criteria without running them under the
+implementer's environment and policies, and turned on a gate before its
+own files met it.
+
+**What changed.** Before filing an issue, the lead runs each evidence
+command it can under the same policies, or words the criterion so the
+implementer can run it. A gate is enabled only after the lead's files
+pass it (#27 before #15).
+
+**Metrics.** Wall time 3 to 7 minutes per implementer run; tokens per
+issue 47k to 100k input, 7k to 16k output, 1M to 5M cache read; defects
+found in review: 0 blocking.
+
+**Protocol feedback.** §4 could require that every criterion is
+runnable by the implementer under its policies.
