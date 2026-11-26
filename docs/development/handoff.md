@@ -105,21 +105,25 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 ## State
 
-- Milestone v0.3.0 (tooling and pilot) is open.
-- Done: #11 control plane (PR #12); #13 puma, brakeman, Ruby 4.0.10
-  (PR #14, the first implementer issue: one block resolved by a lead
-  scope decision, zero review rounds).
-- Open implementer issues: #16 OO pack v1.0.1; #15 mise and Markdown
-  lint; #17 loop driver (depends on #15); #18 guard canaries (depends on
-  #15).
+- v0.3.0: every implementer issue is merged (#13, #15, #16, #17, #18)
+  and the lead issues too. Left: the milestone gate (protocol §7), the
+  `VERSION` bump to 0.3.0 through an implementer issue, then closing the
+  milestone.
+- v0.4.0 is planned: lead issues #32 to #47 draft the specification
+  files (00 and 13 first, as `Depends on` says), #48 builds
+  `docs:check`, #28 hardens the Node toolchain.
+- The loop driver is installed as the `monova-loop` systemd user timer
+  (from 2026-11-26); see my-notes
+  `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Finish the v0.3.0 issues from the interactive session.
-2. Install the driver timer, add `monova-postgres` when PostgreSQL
-   arrives, update my-notes, and let the loop run.
-3. v0.4.0: draft the specification files in this order: 00, 13, 01, 02,
-   03, 04, 05, then the rest; the implementer builds `docs:check`.
+1. Gate and release v0.3.0.
+2. Draft the v0.4.0 specification files in dependency order; dispatch
+   #48 after #32 and #28 any time.
+3. Plan v0.5.0 when v0.4.0 is nearly done: PostgreSQL with RLS roles and
+   the `monova-postgres` container, RSpec migration, exact gem pins and a
+   grouped Gemfile, the Dev Container.
 
 ## After the major release
 
