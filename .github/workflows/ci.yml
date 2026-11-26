@@ -112,9 +112,31 @@ jobs:
       - name: Lint Markdown
         run: npm run lint:md
 
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Lead guard canary
+        run: script/ci/lead_guard_canary
+
+      - name: OpenCode policy check
+        run: script/ci/opencode_policy_check
+
+      - name: OpenCode policy canary
+        run: script/ci/opencode_policy_check --canary
+
   ci-ok:
     if: always()
-    needs: [actionlint, scan_ruby, lint, test, markdown]
+    needs: [actionlint, scan_ruby, lint, test, markdown, guards]
     runs-on: ubuntu-latest
     steps:
       - name: All required jobs passed

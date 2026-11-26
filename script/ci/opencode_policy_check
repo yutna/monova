@@ -1,0 +1,292 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Checks that the OpenCode config pins the implementer model and keeps the
+# deny policies the protocol requires (docs/development/protocol.md §3,
+# §10). The --canary mode proves that removing any required item fails.
+
+require "fileutils"
+require "json"
+require "open3"
+require "optparse"
+require "rbconfig"
+require "tmpdir"
+
+MODEL = "opencode-go/deepseek-v4.1-flash"
+ROOT = File.expand_path("../..", __dir__)
+
+Policy = Struct.new(:action, :resource, :effect, keyword_init: true)
+
+PUSH_MAIN = /\Ashell:git push (?:origin main(?:\s.*)?|\* main(?:\s.*)?|\*:main|\*HEAD:main\*?)\z/
+FORCE_PUSH = /\Ashell:git push (?:--force.*|-f.*|\* --force.*|\* -f.*)\z/
+
+def exact_policy(action, resource)
+  lambda do |policy|
+    policy.action == action && policy.resource == resource && policy.effect == "deny"
+  end
+end
+
+RULES = [
+  [ "push to main", ->(policy) { policy.action == "tool.use" && policy.effect == "deny" && policy.resource.to_s.match?(PUSH_MAIN) } ],
+  [ "force push", ->(policy) { policy.action == "tool.use" && policy.effect == "deny" && policy.resource.to_s.match?(FORCE_PUSH) } ],
+  [ "gh pr merge", exact_policy("tool.use", "shell:gh pr merge*") ],
+  [ "gh api", exact_policy("tool.use", "shell:gh api*") ],
+  [ "gh release", exact_policy("tool.use", "shell:gh release*") ],
+  [ "read config/master.key", exact_policy("tool.use", "read:config/master.key") ],
+  [ "shell master.key", exact_policy("tool.use", "shell:*master.key*") ],
+  [ "edit AGENTS.md", exact_policy("tool.use", "edit:AGENTS.md") ],
+  [ "edit CLAUDE.md", exact_policy("tool.use", "edit:CLAUDE.md") ],
+  [ "edit .claude/**", exact_policy("tool.use", "edit:.claude/**") ],
+  [ "edit .opencode/opencode.jsonc", exact_policy("tool.use", "edit:.opencode/opencode.jsonc") ],
+  [ "edit .opencode/agents/**", exact_policy("tool.use", "edit:.opencode/agents/**") ],
+  [ "edit docs/development/**", exact_policy("tool.use", "edit:docs/development/**") ],
+  [ "mcp.use *", exact_policy("mcp.use", "*") ],
+  [ "external_directory:*", exact_policy("tool.use", "external_directory:*") ]
+].freeze
+
+# Remove // and /* */ comments, leaving strings untouched.
+def strip_jsonc(text)
+  output = +""
+  index = 0
+  in_string = false
+  escaped = false
+
+  while index < text.length
+    char = text[index]
+    following = text[index + 1]
+
+    if in_string
+      output << char
+      if escaped
+        escaped = false
+      elsif char == "\\"
+        escaped = true
+      elsif char == '"'
+        in_string = false
+      end
+      index += 1
+    elsif char == '"'
+      in_string = true
+      output << char
+      index += 1
+    elsif char == "/" && following == "/"
+      index += 2
+      index += 1 while index < text.length && text[index] != "\n"
+    elsif char == "/" && following == "*"
+      index += 2
+      index += 1 while index < text.length && !(text[index] == "*" && text[index + 1] == "/")
+      index += 2
+    else
+      output << char
+      index += 1
+    end
+  end
+
+  output
+end
+
+def read_jsonc(path)
+  JSON.parse(strip_jsonc(File.read(path)))
+rescue JSON::ParserError => error
+  abort "opencode_policy_check: cannot parse #{path}: #{error.message}"
+end
+
+def agent_model(path)
+  text = File.read(path)
+  frontmatter = text[/\A---\n(.*?)\n---\n/m, 1]
+  frontmatter && frontmatter[/^model:[ \t]*(\S+)[ \t]*$/, 1]
+end
+
+def model_values(value, label = "config", found = [])
+  case value
+  when Hash
+    value.each do |key, child|
+      found << [ "#{label}.#{key}", child ] if key.to_s.match?(/model\z/i) && child.is_a?(String)
+      model_values(child, "#{label}.#{key}", found)
+    end
+  when Array
+    value.each_with_index do |child, index|
+      model_values(child, "#{label}[#{index}]", found)
+    end
+  end
+  found
+end
+
+def policies(data)
+  Array(data["policies"]).filter_map do |policy|
+    next unless policy.is_a?(Hash)
+
+    Policy.new(
+      action: policy["action"],
+      resource: policy["resource"],
+      effect: policy["effect"]
+    )
+  end
+end
+
+def inspect_config(root)
+  config_path = File.join(root, ".opencode", "opencode.jsonc")
+  abort "opencode_policy_check: missing #{config_path}" unless File.file?(config_path)
+
+  data = read_jsonc(config_path)
+  agent_paths = Dir[File.join(root, ".opencode", "agents", "*.md")].sort
+  agents = agent_paths.map do |path|
+    { name: File.basename(path, ".md"), model: agent_model(path) }
+  end
+  entries = policies(data)
+  errors = []
+
+  puts "opencode_policy_check: model #{data["model"].inspect}"
+  errors << "top-level model is #{data["model"].inspect}, expected #{MODEL.inspect}" unless data["model"] == MODEL
+
+  errors << "no agent files found" if agents.empty?
+  agents.each do |agent|
+    puts "opencode_policy_check: agent #{agent[:name]} model #{agent[:model].inspect}"
+    if agent[:model].nil?
+      errors << "agent #{agent[:name]} has no model"
+    elsif agent[:model] != MODEL
+      errors << "agent #{agent[:name]} model is #{agent[:model].inspect}, expected #{MODEL.inspect}"
+    end
+  end
+
+  models = model_values(data)
+  agents.each { |agent| models << [ "agent #{agent[:name]}", agent[:model] ] }
+  models.each do |label, model|
+    errors << "#{label} uses a free model (#{model.inspect})" if model.to_s.end_with?("-free")
+  end
+
+  RULES.each do |name, matcher|
+    count = entries.count(&matcher)
+    puts "opencode_policy_check: deny #{name}: #{count} rule(s)"
+    errors << "no deny policy for #{name}" if count.zero?
+  end
+
+  unless errors.empty?
+    errors.each { |error| warn "opencode_policy_check: #{error}" }
+    return 1
+  end
+
+  puts "opencode_policy_check: OK (#{models.length} models, #{agents.length} agents, #{entries.length} policies)"
+  0
+end
+
+def copy_config(source, destination)
+  FileUtils.mkdir_p(File.join(destination, ".opencode", "agents"))
+  FileUtils.cp(
+    File.join(source, ".opencode", "opencode.jsonc"),
+    File.join(destination, ".opencode", "opencode.jsonc")
+  )
+  Dir[File.join(source, ".opencode", "agents", "*.md")].each do |path|
+    FileUtils.cp(path, File.join(destination, ".opencode", "agents", File.basename(path)))
+  end
+end
+
+def reset_config(destination, source)
+  FileUtils.rm_rf(File.join(destination, ".opencode"))
+  copy_config(source, destination)
+end
+
+def mutate_config(destination)
+  path = File.join(destination, ".opencode", "opencode.jsonc")
+  data = JSON.parse(strip_jsonc(File.read(path)))
+  yield data
+  File.write(path, JSON.pretty_generate(data))
+end
+
+def run_check(root)
+  Open3.capture2e(RbConfig.ruby, File.expand_path(__FILE__), "--root", root)
+end
+
+def canary(source)
+  checks = 0
+  failures = 0
+
+  Dir.mktmpdir("monova-opencode-policy") do |dir|
+    reset_config(dir, source)
+    checks += 1
+    output, status = run_check(dir)
+    if status.success?
+      puts "ok: unmodified copy passes"
+    else
+      failures += 1
+      warn "opencode_policy_check --canary: unmodified copy failed"
+      warn output
+    end
+
+    RULES.each do |name, matcher|
+      checks += 1
+      reset_config(dir, source)
+      mutate_config(dir) do |data|
+        data["policies"] = Array(data["policies"]).reject do |policy|
+          matcher.call(
+            Policy.new(
+              action: policy["action"],
+              resource: policy["resource"],
+              effect: policy["effect"]
+            )
+          )
+        end
+      end
+      output, status = run_check(dir)
+      if status.success?
+        failures += 1
+        warn "opencode_policy_check --canary: removing #{name} still passes"
+      else
+        puts "ok: removing #{name} fails"
+      end
+    end
+
+    model_mutations = [
+      [ "top-level model", ->(data) { data["model"] = "opencode-go/another-model" } ],
+      [ "free model", ->(data) { data["model"] = "opencode/gpt-5.1-codex-mini-free" } ]
+    ]
+    model_mutations.each do |name, mutation|
+      checks += 1
+      reset_config(dir, source)
+      mutate_config(dir, &mutation)
+      output, status = run_check(dir)
+      if status.success?
+        failures += 1
+        warn "opencode_policy_check --canary: changing the #{name} still passes"
+      else
+        puts "ok: changing the #{name} fails"
+      end
+    end
+
+    Dir[File.join(source, ".opencode", "agents", "*.md")].sort.each do |agent_path|
+      checks += 1
+      reset_config(dir, source)
+      target = File.join(dir, ".opencode", "agents", File.basename(agent_path))
+      File.write(target, File.read(target).sub(/^model:.*$/, "model: opencode-go/another-model"))
+      output, status = run_check(dir)
+      if status.success?
+        failures += 1
+        warn "opencode_policy_check --canary: changing agent #{File.basename(agent_path)} still passes"
+      else
+        puts "ok: changing agent #{File.basename(agent_path)} fails"
+      end
+    end
+  end
+
+  if checks.zero?
+    warn "opencode_policy_check --canary: checked 0 copies"
+    return 1
+  end
+
+  if failures.positive?
+    warn "opencode_policy_check --canary: checked #{checks} copies; unexpected passes=#{failures}"
+    return 1
+  end
+
+  puts "opencode_policy_check --canary: checked #{checks} copies; unexpected passes=0"
+  0
+end
+
+options = { root: ROOT, canary: false }
+OptionParser.new do |parser|
+  parser.banner = "Usage: opencode_policy_check [--root DIR] [--canary]"
+  parser.on("--root DIR", "Repository root to check") { |value| options[:root] = File.expand_path(value) }
+  parser.on("--canary", "Prove each required item fails when removed") { options[:canary] = true }
+end.parse!
+
+exit(options[:canary] ? canary(options[:root]) : inspect_config(options[:root]))
