@@ -1,0 +1,59 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Proves that script/docs/check fails for every failure case and passes on
+# a clean fixture root. Run by bin/ci and by GitHub CI.
+
+require "open3"
+require "rbconfig"
+
+ROOT = File.expand_path("../..", __dir__)
+CHECK = File.join(__dir__, "check")
+FIXTURES = File.join(ROOT, "test", "fixtures", "docs_check")
+
+# Each case: fixture root, whether it must pass, and output fragments that
+# must be present. The fragments prove the right failure was reported.
+CASES = [
+  [ "clean", true, [ "docs_check: checked 2 files, 1 rule ID and 1 ADR", "docs_check: OK" ] ],
+  [ "undefined-rule-id", false, [ "ARCH-02 is cited but not defined" ] ],
+  [ "duplicate-rule-id", false, [ "ARCH-01 is defined 2 times" ] ],
+  [ "undefined-adr", false, [ "ADR-09 is cited but not defined" ] ],
+  [ "superseded-adr", false, [ "ADR-01 is superseded by ADR-02" ] ],
+  [ "control-citations", false,
+    [ "AGENTS.md:3: AUTH-01 is cited but not defined",
+      "CLAUDE.md:3: AUTH-02 is cited but not defined",
+      ".opencode/agents/implementer.md:3: AUTH-03 is cited but not defined",
+      "docs/development/protocol.md:3: AUTH-04 is cited but not defined" ] ],
+  [ "file-budget", false, [ "01_architecture.md has 401 lines, budget is 400" ] ],
+  [ "total-budget", false, [ "docs/architecture has 4501 lines, budget is 4500" ] ],
+  [ "empty", false, [ "no Markdown files" ] ]
+].freeze
+
+def run(root)
+  Open3.capture2e(RbConfig.ruby, CHECK, "--root", File.join(FIXTURES, root))
+end
+
+failures = 0
+
+CASES.each do |name, expected_pass, fragments|
+  output, status = run(name)
+  behaviour_ok = expected_pass ? status.success? : !status.success?
+  missing = fragments.reject { |fragment| output.include?(fragment) }
+
+  if behaviour_ok && missing.empty?
+    puts "ok: #{name} #{expected_pass ? 'passes' : 'fails'}"
+    next
+  end
+
+  failures += 1
+  warn "docs_check canary: #{name}: expected #{expected_pass ? 'pass' : 'fail'}"
+  missing.each { |fragment| warn "docs_check canary: #{name}: missing #{fragment.inspect}" }
+  warn output
+end
+
+if failures.positive?
+  warn "docs_check canary: #{CASES.length} roots, unexpected results=#{failures}"
+  exit 1
+end
+
+puts "docs_check canary: #{CASES.length} roots, unexpected results=0"

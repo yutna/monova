@@ -19,6 +19,7 @@
     }
   },
   "scripts": {
+    "docs:check": "script/docs/check",
     "lint:md": "markdownlint-cli2 \"**/*.md\""
   },
   "devDependencies": {
