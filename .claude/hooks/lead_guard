@@ -67,9 +67,13 @@ case "$tool" in
     done <<<"$targets"
     # A file-writing command next to an implementation path.
     write='([[:space:]]tee[[:space:]]|sed[[:space:]]+-i|perl[[:space:]]+-[a-z]*i|[[:space:]]truncate[[:space:]]|(^|[;&|[:space:]])(cp|mv|rm|install|patch|ln)[[:space:]]|git[[:space:]]+apply|git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]|[^-]))'
-    if grep -Eq "$write" <<<"$cmd" && grep -Eq "$impl" <<<"$cmd"; then
-      block "this shell command writes to an implementation path"
-    fi
+    # Checked per simple command, so `cp a /tmp/b && bin/ci` is not a write
+    # to bin/. The split ignores quoting; it errs towards blocking.
+    while IFS= read -r segment; do
+      if grep -Eq "$write" <<<" $segment" && grep -Eq "$impl" <<<" $segment"; then
+        block "this shell command writes to an implementation path"
+      fi
+    done < <(sed -E 's/(&&|\|\||;|\|)/\n/g' <<<"$cmd")
     if grep -Eq '(^|[;&|[:space:]])((bin/)?rails|bundle exec rails)[[:space:]]+(g|generate|destroy)[[:space:]]|bundle[[:space:]]+(add|update|remove)|npm[[:space:]]+(install|i|uninstall)[[:space:]]+[^-]' <<<"$cmd"; then
       block "generators and dependency changes are implementation work"
     fi
