@@ -39,7 +39,8 @@ decision, never in the pull request that would profit from it.
 ### Today
 
 The template ships no engines, no RSpec suite and no kernel yet, so
-every rule below is `review` today. The tools `bin/ci` runs now are:
+every rule below except WF-03 is `review` today. The tools CI runs now
+are:
 
 | Tool | Checks | Canary |
 | --- | --- | --- |
@@ -49,10 +50,12 @@ every rule below is `review` today. The tools `bin/ci` runs now are:
 | `markdownlint-cli2` | Markdown, default rules | none |
 | `npm run docs:check` | Rule IDs, ADR citations, line budgets | yes |
 | actionlint (GitHub CI) | Workflow files | none |
+| `script/ci/ruleset_check` (GitHub CI) | The `main` ruleset (WF-03) | yes |
 
-The process guards of the template's own build (`script/ci/`, the lead
-guard, the OpenCode policies, the `main` ruleset) guard the build, not
-the application; `docs/development/protocol.md` lists them.
+The process guards of the template's own build (the lead guard and the
+OpenCode policies) guard the build, not the application;
+`docs/development/protocol.md` lists them, and WF-01 says what an
+adopter keeps.
 
 ## Matrix
 
@@ -270,10 +273,29 @@ none, so the adopter's review and runbooks check them.
 - GEN-07 is the rule that the smoke step runs; review checks that the
   CI job's paths cover the generators.
 
-### Workflow and AI
+### Workflow
 
-`14_workflow.md` and `15_working_with_ai.md` add their rows here when
-they are drafted.
+| Rule | Guard | Target | Now |
+| --- | --- | --- | --- |
+| WF-01 | — | review | review |
+| WF-02 | — | review | review |
+| WF-03 | `script/ci/ruleset_check` | enforced | enforced |
+| WF-04 | Release preflight checks `VERSION` | review | review |
+| WF-05 | `script/deps/check`; frozen installs | enforced | review |
+| WF-06 | — | review | review |
+
+- WF-03: the ruleset check and its canary run in CI today. Titles,
+  labels and milestones are checked by `pr-check`, a required check
+  with no canary, so that part is reviewed.
+- WF-04: the preflight stops a wrong release but runs outside CI and has
+  no canary, so the rule stays review.
+- WF-05: `script/deps/check` fails on a version range in the `Gemfile`
+  or `package.json` and on a group without a comment; the group order
+  is reviewed.
+
+### AI
+
+`15_working_with_ai.md` adds its rows here when it is drafted.
 
 ## Canaries
 
