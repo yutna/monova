@@ -134,6 +134,14 @@ jobs:
       - name: OpenCode policy canary
         run: script/ci/opencode_policy_check --canary
 
+      - name: Main branch ruleset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: script/ci/ruleset_check
+
+      - name: Main branch ruleset canary
+        run: script/ci/ruleset_check --canary
+
   loop:
     runs-on: ubuntu-latest
     steps:

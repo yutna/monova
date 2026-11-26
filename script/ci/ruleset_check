@@ -1,0 +1,211 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Checks the `main` branch ruleset that enforces "main takes only squash
+# merges with CI" (docs/development/protocol.md §10). The --canary mode
+# proves the check fails when any required item is broken.
+
+require "json"
+require "net/http"
+require "optparse"
+require "timeout"
+require "uri"
+
+DEFAULT_REPOSITORY = "yutna/monova"
+RULESET_NAME = "main"
+REQUIRED_CONTEXTS = [ "ci-ok", "pr-check / check" ].freeze
+DEFAULT_BRANCH_REFS = [ "~DEFAULT_BRANCH", "refs/heads/main" ].freeze
+API_VERSION = "2022-11-28"
+FIXTURE = File.expand_path("fixtures/main_ruleset.json", __dir__)
+
+def read_ruleset(path)
+  JSON.parse(File.read(path))
+rescue Errno::ENOENT
+  abort "ruleset_check: #{path} does not exist"
+rescue JSON::ParserError => error
+  abort "ruleset_check: cannot parse #{path}: #{error.message}"
+end
+
+def rules(data)
+  Array(data["rules"]).select { |rule| rule.is_a?(Hash) }
+end
+
+def rule_of_type(data, type)
+  rules(data).find { |rule| rule["type"] == type }
+end
+
+def status_contexts(data)
+  rules(data)
+    .select { |rule| rule["type"] == "required_status_checks" }
+    .flat_map { |rule| Array(rule.dig("parameters", "required_status_checks")) }
+    .filter_map { |check| check["context"] if check.is_a?(Hash) }
+end
+
+def checks(data)
+  include_refs = Array(data.dig("conditions", "ref_name", "include"))
+  pull_request = rule_of_type(data, "pull_request")
+  allowed = pull_request && pull_request.dig("parameters", "allowed_merge_methods")
+  contexts = status_contexts(data)
+
+  [
+    [ "enforcement is active", data["enforcement"] == "active", "enforcement: #{data["enforcement"].inspect}" ],
+    [ "target is branch", data["target"] == "branch", "target: #{data["target"].inspect}" ],
+    [ "ref_name includes the default branch", (include_refs & DEFAULT_BRANCH_REFS).any?,
+      "include: #{include_refs.inspect}" ],
+    [ "pull_request allows only squash merges", allowed == [ "squash" ], "allowed_merge_methods: #{allowed.inspect}" ],
+    [ "required status checks list #{REQUIRED_CONTEXTS.join(" and ")}", (REQUIRED_CONTEXTS - contexts).empty?,
+      "contexts: #{contexts.inspect}" ],
+    [ "non_fast_forward rule is present", rule_of_type(data, "non_fast_forward") != nil, nil ],
+    [ "deletion rule is present", rule_of_type(data, "deletion") != nil, nil ]
+  ]
+end
+
+def failures(data)
+  checks(data).reject { |_, ok, _| ok }.map { |name, _, _| name }
+end
+
+def evaluate(data)
+  results = checks(data)
+  failed = results.reject { |_, ok, _| ok }
+
+  results.each do |name, ok, detail|
+    line = ok ? "ok: #{name}" : "ruleset_check: FAIL #{name}"
+    line += " (#{detail})" if detail
+    ok ? puts(line) : warn(line)
+  end
+
+  if failed.empty?
+    puts "ruleset_check: OK (#{results.length} checks)"
+    0
+  else
+    warn "ruleset_check: #{failed.length} of #{results.length} checks failed"
+    1
+  end
+end
+
+def api_get(url, token)
+  uri = URI(url)
+  request = Net::HTTP::Get.new(uri)
+  request["Accept"] = "application/vnd.github+json"
+  request["User-Agent"] = "monova-ruleset-check"
+  request["X-GitHub-Api-Version"] = API_VERSION
+  request["Authorization"] = "Bearer #{token}" if token && !token.empty?
+
+  response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") do |http|
+    http.request(request)
+  end
+
+  unless response.is_a?(Net::HTTPSuccess)
+    abort "ruleset_check: GET #{url} returned #{response.code} #{response.message}"
+  end
+
+  JSON.parse(response.body)
+rescue JSON::ParserError => error
+  abort "ruleset_check: cannot parse the response from #{url}: #{error.message}"
+rescue Timeout::Error, SystemCallError, IOError, SocketError => error
+  abort "ruleset_check: cannot fetch #{url}: #{error.class}: #{error.message}"
+end
+
+def fetch_main_ruleset
+  repository = ENV["GITHUB_REPOSITORY"].to_s
+  repository = DEFAULT_REPOSITORY if repository.empty?
+  token = ENV["GITHUB_TOKEN"]
+  base = "https://api.github.com/repos/#{repository}/rulesets"
+
+  ruleset = Array(api_get(base, token)).find do |candidate|
+    candidate.is_a?(Hash) && candidate["name"] == RULESET_NAME && candidate["target"] == "branch"
+  end
+  abort "ruleset_check: no branch ruleset named #{RULESET_NAME.inspect} in #{repository}" unless ruleset
+
+  api_get("#{base}/#{ruleset["id"]}", token)
+end
+
+def deep_copy(data)
+  JSON.parse(JSON.generate(data))
+end
+
+def set_allowed_merge_methods(data, methods)
+  rule = rule_of_type(data, "pull_request")
+  rule["parameters"]["allowed_merge_methods"] = methods
+end
+
+def drop_status_context(data, context)
+  rules(data).each do |rule|
+    next unless rule["type"] == "required_status_checks"
+
+    Array(rule.dig("parameters", "required_status_checks")).reject! { |check| check["context"] == context }
+  end
+end
+
+def mutations
+  [
+    [ "enforcement not active", ->(data) { data["enforcement"] = "disabled" } ],
+    [ "target not branch", ->(data) { data["target"] = "tag" } ],
+    [ "ref_name not the default branch", ->(data) { data["conditions"]["ref_name"]["include"] = [ "refs/heads/other" ] } ],
+    [ "pull_request rule missing", ->(data) { data["rules"].reject! { |rule| rule["type"] == "pull_request" } } ],
+    [ "allowed_merge_methods is merge", ->(data) { set_allowed_merge_methods(data, [ "merge" ]) } ],
+    [ "allowed_merge_methods adds merge", ->(data) { set_allowed_merge_methods(data, [ "squash", "merge" ]) } ],
+    [ "ci-ok status check missing", ->(data) { drop_status_context(data, "ci-ok") } ],
+    [ "pr-check / check status check missing", ->(data) { drop_status_context(data, "pr-check / check") } ],
+    [ "non_fast_forward rule missing", ->(data) { data["rules"].reject! { |rule| rule["type"] == "non_fast_forward" } } ],
+    [ "deletion rule missing", ->(data) { data["rules"].reject! { |rule| rule["type"] == "deletion" } } ]
+  ]
+end
+
+def canary(path)
+  source = read_ruleset(path)
+  checked = 0
+  unexpected_passes = 0
+
+  checked += 1
+  if failures(source).empty?
+    puts "ok: unmodified fixture passes"
+  else
+    unexpected_passes += 1
+    warn "ruleset_check --canary: unmodified fixture fails: #{failures(source).join(", ")}"
+  end
+
+  mutations.each do |name, mutation|
+    checked += 1
+    copy = deep_copy(source)
+    mutation.call(copy)
+    failed = failures(copy)
+
+    if failed.empty?
+      unexpected_passes += 1
+      warn "ruleset_check --canary: #{name} still passes"
+    else
+      puts "ok: #{name} fails (#{failed.join(", ")})"
+    end
+  end
+
+  if checked.zero?
+    warn "ruleset_check --canary: checked 0 copies"
+    return 1
+  end
+
+  if unexpected_passes.positive?
+    warn "ruleset_check --canary: checked #{checked} copies; unexpected passes=#{unexpected_passes}"
+    return 1
+  end
+
+  puts "ruleset_check --canary: checked #{checked} copies; unexpected passes=0"
+  0
+end
+
+options = { file: nil, canary: false }
+OptionParser.new do |parser|
+  parser.banner = "Usage: ruleset_check [--file PATH] [--canary]"
+  parser.on("--file PATH", "Check a ruleset detail JSON file instead of the live ruleset") do |value|
+    options[:file] = value
+  end
+  parser.on("--canary", "Prove every broken copy of the fixture fails") { options[:canary] = true }
+end.parse!
+
+if options[:canary]
+  exit canary(FIXTURE)
+elsif options[:file]
+  exit evaluate(read_ruleset(options[:file]))
+else
+  exit evaluate(fetch_main_ruleset)
+end
