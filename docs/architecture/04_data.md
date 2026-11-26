@@ -21,7 +21,7 @@ kept out of logs and deleted on schedule (ADR-21).
 
 ## Rules
 
-### DATA-01 — Four roles separate ownership from use (MUST · ADR-07)
+### DATA-01 — Five roles separate ownership from use (MUST · ADR-07)
 
 Every database role and what it may do:
 
@@ -30,11 +30,13 @@ Every database role and what it may do:
 | `acme_migrator` | yes | yes | schema and tables | migrations, backfills |
 | `acme_app` | yes | no | nothing | the application |
 | `acme_auth` | no | no | lookup functions | the AUTH-07 lookups |
+| `acme_purge` | no | no | purge function | audit retention |
 | `acme_backup` | yes | yes | nothing | backups |
 
 - `acme_app` gets `SELECT`, `INSERT`, `UPDATE` and `DELETE` on tables,
   and `EXECUTE` on the lookup functions. `acme_auth` gets `SELECT` on
-  `core_tokens` and `core_machine_clients` only. `acme_backup` is a
+  `core_tokens` and `core_machine_clients` only. `acme_purge` gets
+  `SELECT` and `DELETE` on `core_audit_events` only. `acme_backup` is a
   member of `pg_read_all_data` and writes nothing.
 
 - No role is a superuser. Superusers and roles with `BYPASSRLS` skip
@@ -48,12 +50,15 @@ Every database role and what it may do:
 - The application holds only the `acme_app` credentials. The release
   step that runs migrations gets the migrator credentials; no web or
   job process ever has them (`09_observability_ops.md`).
-- `acme_auth` owns the two `SECURITY DEFINER` functions of AUTH-07.
-  `EXECUTE` on them is revoked from `PUBLIC` and granted to `acme_app`
-  only. `acme_migrator` is a member of `acme_auth` so that a migration
-  can hand the functions to it with `ALTER FUNCTION ... OWNER TO`;
-  `acme_auth` has `CREATE` on the schema, which a function owner
-  needs, and cannot use it because it cannot log in.
+- `acme_auth` owns the two `SECURITY DEFINER` functions of AUTH-07,
+  and `acme_purge` owns the audit purge function (DATA-14). `EXECUTE`
+  on each is revoked from `PUBLIC` and granted to `acme_app` only.
+- `acme_migrator` is a member of `acme_auth` and `acme_purge`, so a
+  migration can hand them their functions with
+  `ALTER FUNCTION ... OWNER TO`, which needs that membership and
+  `CREATE` on the schema for the new owner. That `CREATE` widens
+  nothing: the two roles cannot log in, and their only member already
+  owns the schema.
 - `core_audit_events` grants `acme_app` only `SELECT` and `INSERT`
   (DATA-14).
 - The Solid Queue, Solid Cache and Solid Cable databases (ADR-04) are
@@ -66,7 +71,7 @@ Every database role and what it may do:
 
 ### DATA-02 — One re-runnable script creates the roles and grants (MUST · ADR-07)
 
-- `bin/db-roles` creates the four roles and their grants in every
+- `bin/db-roles` creates the five roles and their grants in every
   database, for development, CI and each deployed environment. Running
   it again changes nothing that is already right, so it is safe after
   every release.
@@ -78,7 +83,9 @@ Every database role and what it may do:
   tables (`SELECT, INSERT, UPDATE, DELETE`) and sequences
   (`USAGE, SELECT`), so a table a later migration creates is usable at
   once. It also grants on existing objects, for a database restored
-  from a dump.
+  from a dump, and as its last step revokes `UPDATE` and `DELETE` on
+  `core_audit_events` from `acme_app` again, so a rerun never undoes
+  DATA-14.
 - Passwords come from the environment of the run, never from the
   script or the repository (`08_security.md`).
 - A kernel spec connects as `acme_app` and proves that the role owns no
@@ -304,8 +311,11 @@ returned.
   action an issue or ADR marks as audited. Core audits sign-in, token
   issue and revocation, membership and machine client changes.
 - The table is append-only: `acme_app` has no `UPDATE` or `DELETE` on
-  it (DATA-01). Only the retention job, running as `acme_migrator`,
-  deletes old events (DATA-15).
+  it (DATA-01). Old events are deleted only by core's purge function,
+  `SECURITY DEFINER` and owned by `acme_purge`, which takes no
+  arguments and deletes only events older than the retention period
+  (DATA-15). Row-level security still binds it, so the retention job
+  calls it inside the tenancy helper, one tenant at a time.
 
 ### DATA-15 — Data is kept only as long as its retention says (MUST · ADR-21)
 
