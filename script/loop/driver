@@ -105,7 +105,8 @@ rc=0
   cd "$REPO" || exit 1
   exec timeout "$timeout_seconds" "$claude_bin" -p "$(cat "$prompt_file")" \
     --output-format stream-json --verbose \
-    --permission-mode bypassPermissions 9>&- >"$stream" 2>&1
+    --permission-mode bypassPermissions \
+    --disallowedTools AskUserQuestion 9>&- >"$stream" 2>&1
 ) || rc=$?
 
 result_line=$(jq -Rc 'fromjson? | select(.type == "result")' "$stream" 9>&- | tail -n 1)
