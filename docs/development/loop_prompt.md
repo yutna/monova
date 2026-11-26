@@ -72,5 +72,10 @@ reviews the result.
   files or whole event streams.
 - Write issue and comment bodies to a file with the Write tool, then
   pass the file to `gh`.
+- Leave the repository checkout on `main` with a clean tree when you
+  end; the driver skips every tick otherwise. Branch work for a lead
+  issue happens in a worktree under `$STATE/worktrees/lead-<N>`.
+- Record the implementer's session ID and metrics in the pull request's
+  final review comment (protocol §12).
 - End with at most five lines: the action taken, links, and the next
   expected action.
