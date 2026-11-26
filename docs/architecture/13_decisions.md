@@ -418,3 +418,27 @@ has a retention period after which a recurring job deletes it.
 **Consequences.** A leaked log or database copy exposes far less, and an
 erasure request has a defined path. Every new column needs a class, and
 encrypted columns cannot be searched except through a digest.
+
+### ADR-22 — Domain events leave through a transactional outbox
+
+Status: Accepted
+
+**Context.** Engines must react to each other's changes without a
+dependency that points upward (ADR-08). The whole request runs in one
+transaction on the primary database (ADR-07), while Solid Queue keeps
+its jobs in a database of its own (ADR-04), so a job enqueued during the
+request is not part of that transaction: it can run before the commit,
+or survive a rollback.
+
+**Decision.** A command records each domain event as a row in a
+tenant-owned outbox table in the same transaction as its change. After
+the commit, a relay job per tenant hands each event to its subscribers,
+and a delivery table with a unique key per event and subscriber makes
+each subscriber's database changes happen once. A recurring job re-runs
+the relay for every tenant, so no event is lost.
+
+**Consequences.** Events exist exactly when their change does, and
+publishers never know their subscribers. Delivery is asynchronous, at
+least once and unordered, so subscribers read current state through
+public queries. The outbox and delivery tables need retention, and the
+recurring relay costs one job per tenant per run.
