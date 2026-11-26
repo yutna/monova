@@ -3,7 +3,7 @@ name: oo-modeling-values-and-entities
 description: Use when picking value or entity, when ids are raw strings or numbers, when editing one object changes another, or equal objects compare unequal.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -153,7 +153,13 @@ class ReferralDesk
 `new Referral(clinician, patient)`, is a type error: a `ClinicianId` is
 not a `PatientId`. `ReferralDesk.refer` passes each identifier in its
 own position. A factory would add nothing here, because each identifier
-has one field and one way to be made.
+has one field and one way to be made. The notation's `PatientId`
+declares no members; this value adds the `patientId` field and a `text`
+constructor parameter, and it checks the format in that constructor.
+Both `Referral` fences hold a patient and a clinician and no accepting
+clinician, where the substitutability reference's `Referral` holds
+`patient` and `acceptedBy`; the Before takes two strings and the After
+two identifiers.
 
 ## Red flags
 

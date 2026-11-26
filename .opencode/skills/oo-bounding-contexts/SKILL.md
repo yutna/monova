@@ -3,7 +3,7 @@ name: oo-bounding-contexts
 description: Use when splitting a large model between teams, choosing how parts with their own models talk, or deciding which parts to build or buy.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -201,6 +201,10 @@ is left out of the fence.
 no billing class in the After names the `Appointment` class: the
 identifier is all billing holds. Every field is set in a constructor
 named for it before a query or `handle` reads it, and no step runs twice.
+Neither fence shows what would refuse a second `bill` call that read
+`invoiceNumber` as null: a store that saves `BillableVisit` whole and
+refuses a save made from an older copy would, and both fences leave that
+store and its version check out.
 
 ## Red flags
 
@@ -244,5 +248,6 @@ evidence: a measurement, a reproducible bug, or a failing test.
 
 - [Context maps](references/context-maps.md)
 - [Core and generic parts](references/core-and-generic-parts.md)
+- [A worked example of an anti-corruption layer](references/worked-example-an-anti-corruption-layer.md)
 
 [two-meanings]: ../oo-speaking-the-domain-language/references/two-meanings-of-one-word.md#signs-of-two-owners

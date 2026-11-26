@@ -3,7 +3,7 @@ name: oo-naming-classes-and-methods
 description: Use when choosing what to call a class or method, when names end in Manager, Helper or Util, or when a name no longer says what the code does.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -143,7 +143,8 @@ class PatientRegister
 `add` and `register` each send `add` to the field once. `lookup` and
 `isRegistered` each send `contains` to the field once and change
 nothing. The constructor sets the field before any read, and the list
-stays private, so no caller receives it.
+stays private, so no caller receives it. Both fences leave out what is
+stored, under which identity, where and in which transaction.
 
 ## Red flags
 

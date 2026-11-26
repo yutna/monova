@@ -3,7 +3,7 @@ name: oo-assigning-responsibilities
 description: Use when deciding which class owns a behaviour, where a method lives, which object holds its data or creates another, or when a class does too much.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -221,6 +221,12 @@ class CancelAppointment
 status. Only `cancel` sets the reason and releases the slot. The
 constructor is private, so `book` is the only way to create an
 appointment. No field is read before it is set, and no step runs twice.
+Both fences add `cancellationReason` to the notation's `Appointment`
+and build it from `slot` and `patient` alone, with the constructor
+setting `status` to `Scheduled`. Neither fence shows the store that
+saves the appointment or the slot whole and refuses a save made from an
+older copy, so the second of two reservations or cancellations that read
+the earlier state fails there.
 
 ## Red flags
 

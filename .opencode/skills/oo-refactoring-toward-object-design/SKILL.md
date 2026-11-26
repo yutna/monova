@@ -3,7 +3,7 @@ name: oo-refactoring-toward-object-design
 description: Use when restructuring working code without changing what it does, when a refactoring grew too big to finish, or when moving toward a pattern.
 license: MIT
 metadata:
-  version: 0.17.1
+  version: 1.0.1
   pack: object-oriented-design-skills
 ---
 
@@ -232,3 +232,4 @@ evidence: a measurement, a reproducible bug, or a failing test.
 
 - [Smells and moves](references/smells-and-moves.md)
 - [Toward and away from a pattern](references/toward-and-away-from-a-pattern.md)
+- [A worked example of a fat controller](references/worked-example-a-fat-controller.md)
