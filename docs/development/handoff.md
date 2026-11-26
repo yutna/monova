@@ -106,18 +106,19 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 ## State
 
 - Milestone v0.3.0 (tooling and pilot) is open.
-- #11 (lead): this control plane.
-- Planned implementer issues in v0.3.0: Markdown lint with mise and
-  Node; OO pack v1.0.1; the `lead_guard` canary in `bin/ci`; the loop
-  driver and systemd units.
+- Done: #11 control plane (PR #12); #13 puma, brakeman, Ruby 4.0.10
+  (PR #14, the first implementer issue: one block resolved by a lead
+  scope decision, zero review rounds).
+- Open implementer issues: #16 OO pack v1.0.1; #15 mise and Markdown
+  lint; #17 loop driver (depends on #15); #18 guard canaries (depends on
+  #15).
 
 ## Next steps
 
-1. Merge #11, then file and dispatch the v0.3.0 implementer issues.
-2. Prove the loop on one issue from this interactive session; record the
-   metrics (protocol §12).
-3. Install the driver, update my-notes, and let the loop run.
-4. v0.4.0: draft the specification files in this order: 00, 13, 01, 02,
+1. Finish the v0.3.0 issues from the interactive session.
+2. Install the driver timer, add `monova-postgres` when PostgreSQL
+   arrives, update my-notes, and let the loop run.
+3. v0.4.0: draft the specification files in this order: 00, 13, 01, 02,
    03, 04, 05, then the rest; the implementer builds `docs:check`.
 
 ## After the major release
@@ -134,6 +135,6 @@ material.
 
 ## Open questions
 
-- How a headless `claude -p` run learns the remaining weekly budget (the
-  status line file is not written in headless mode). The driver issue
-  settles it.
+- None. (Settled: a headless `claude -p --output-format stream-json
+  --verbose` run emits a `rate_limit_event` with the five-hour and
+  seven-day utilization and reset times; the driver records it.)
