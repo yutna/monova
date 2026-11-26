@@ -200,7 +200,7 @@ There is one error path, and it ends in core's error responder
   engine's event (ARCH-02).
 - Domain events are not `ActiveSupport::Notifications` or Rails 8.1's
   event reporter (`Rails.event`); those carry instrumentation for
-  logs and traces (`09_observability_ops.md`) and are not durable.
+  logs and traces (OPS-02, OPS-03) and are not durable.
 
 ### DOM-10 — Events leave through the transactional outbox (MUST · ADR-22)
 

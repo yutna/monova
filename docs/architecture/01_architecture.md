@@ -251,7 +251,7 @@ in the root `config/budgets.yml`, under `growth:`.
 1. Thruster terminates HTTP in the container and passes the request to
    Puma.
 2. The Rails middleware stack runs: request ID, logging, host
-   authorization (`08_security.md`, `09_observability_ops.md`).
+   authorization (OPS-02, OPS-03, SEC-04).
 3. The root router sends the request to the product engine mounted at
    its path.
 4. The engine's controller inherits core's base controller, which

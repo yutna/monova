@@ -46,10 +46,10 @@ Every database role and what it may do:
   binds the owner too, and a migration or backfill must see every
   tenant's rows. `acme_backup` has it because `pg_dump` turns
   `row_security` off and fails for a role the policies bind
-  (`09_observability_ops.md`). These are the only two (AUTH-12).
+  (OPS-08). These are the only two (AUTH-12).
 - The application holds only the `acme_app` credentials. The release
   step that runs migrations gets the migrator credentials; no web or
-  job process ever has them (`09_observability_ops.md`).
+  job process ever has them (OPS-07).
 - `acme_auth` owns the two `SECURITY DEFINER` functions of AUTH-07,
   and `acme_purge` owns the audit purge function (DATA-14). `EXECUTE`
   on each is revoked from `PUBLIC` and granted to `acme_app` only.
@@ -287,7 +287,7 @@ returned.
 - `filter_attributes` follows `filter_parameters`, so `inspect` on a
   record hides those columns too, and encrypted attributes are added
   automatically. Error reports and traces use the same filter
-  (`09_observability_ops.md`).
+  (OPS-03, OPS-04).
 - Production logs at the `info` level, which does not log SQL
   statements or their bound values.
 - A request spec in core sends filtered parameters and fails when any
@@ -326,7 +326,7 @@ returned.
 | Finished Solid Queue jobs | 1 day (`clear_finished_jobs_after`) |
 | Solid Cache entries | 1 day `max_age`, expired on writes (PERF-07) |
 | A deleted tenant's rows | 30 days after the deletion, then erased |
-| Backups | `09_observability_ops.md` |
+| Backups | 30 days (OPS-08) |
 
 - An application MAY change these periods in an ADR. A period for a
   new kind of data is set by the issue that introduces it, in

@@ -112,8 +112,8 @@ server and does not claim to conform to one.
   token, gets `401` `unauthenticated` with a
   `WWW-Authenticate: Bearer` header (RFC 6750 §3). The problem does not
   say which of these it was.
-- Only the token endpoint (AUTH-02), the health checks
-  (`09_observability_ops.md`) and the inbound webhook receivers, which
+- Only the token endpoint (AUTH-02), the health check
+  (OPS-05) and the inbound webhook receivers, which
   verify a signature instead (INT-12), skip bearer authentication, and
   the document marks them with an empty `security` list (API-03).
 - Authentication happens before any other work, including request
@@ -276,7 +276,7 @@ in three layers:
   transaction. Work across tenants, such as operator reports, loops over
   tenants with one transaction each (AUTH-11).
 - A role with `BYPASSRLS` is used only for migrations and backups
-  (`04_data.md`, `09_observability_ops.md`), never by the application.
+  (`04_data.md`, OPS-07, OPS-08), never by the application.
 - An application that needs a true cross-tenant read, such as a support
   console, adds an ADR that names the role, how its use is audited, and
   who may run it.

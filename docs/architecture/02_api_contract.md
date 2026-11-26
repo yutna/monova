@@ -175,7 +175,7 @@ Every error response is an RFC 9457 problem with the media type
 - A problem never contains a stack trace, SQL, a class name, a file path
   or another tenant's data. An unexpected error is a `500` with the code
   `internal_error` and nothing else; the details go to the logs with the
-  request ID (`09_observability_ops.md`).
+  request ID (OPS-03, OPS-04).
 - The `status` member always equals the HTTP status.
 - The only exception is the `413` that Thruster and Puma send for an
   oversized body before Rails runs (PERF-08).
