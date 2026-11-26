@@ -66,3 +66,32 @@ found in review: 0 blocking.
 
 **Protocol feedback.** §4 could require that every criterion is
 runnable by the implementer under its policies.
+
+## 2026-11-26 — v0.3.0 — loop installation
+
+**What happened.** Three traps showed up before the first unattended
+tick. A process started with `nohup setsid` inside the driver's oneshot
+systemd unit was killed when the unit ended, so a detached implementer
+would have died with every lead run. Milestone `v0.2.1` was open with
+all its issues closed, so the rule "the lowest open milestone with every
+issue closed is complete" would have gated and released it. The headless
+lead loads the owner's global `~/.claude/CLAUDE.md`, which asks for
+choice prompts, timestamps and new-session suggestions.
+
+**Root cause.** The dispatch was only ever tested from an interactive
+session, whose background jobs live outside any service cgroup. The
+milestone rule did not say which milestones belong to the loop. Global
+instructions assume a person in the chat.
+
+**What changed.** The lead dispatches OpenCode as its own transient unit
+with `systemd-run --user` (passing `PATH` and `HOME`) and records its
+`MainPID`; a probe proved it outlives the driver. The loop prompt limits
+the lead to milestones from `v0.3.0` on, says a milestone with no issues
+is never complete, and overrides the chat-only global rules; #54 also
+denies `AskUserQuestion` in the driver. A headless probe proved that
+`lead_guard` blocks a Write under `app/`.
+
+**First ticks.** Tick 1 ran the v0.3.0 gate in a fresh subagent, which
+found that protocol §10 claimed the GitHub ruleset as enforced without a
+check (#57), and filed three follow-ups (one duplicate of #28, closed).
+Tick 2 dispatched #57. Cost per lead tick: USD 0.30 to 1.20.
