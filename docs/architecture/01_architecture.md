@@ -250,13 +250,14 @@ in the root `config/budgets.yml`, under `growth:`.
 
 1. Thruster terminates HTTP in the container and passes the request to
    Puma.
-2. The Rails middleware stack runs: request ID, logging, rate limits
-   (`08_security.md`, `09_observability_ops.md`).
+2. The Rails middleware stack runs: request ID, logging, host
+   authorization (`08_security.md`, `09_observability_ops.md`).
 3. The root router sends the request to the product engine mounted at
    its path.
-4. The engine's controller inherits core's base controller, which finds
-   the bearer token, checks it and its scopes, and opens the tenant for
-   the request (`03_identity_access.md`).
+4. The engine's controller inherits core's base controller, which
+   applies the IP rate limit (SEC-02), finds the bearer token, checks it
+   and its scopes, applies the limits per client and tenant, and opens
+   the tenant for the request (`03_identity_access.md`).
 5. The controller checks the request against the OpenAPI document,
    authorizes it with a policy, and calls one command or one query
    object (`02_api_contract.md`, `05_domain.md`).

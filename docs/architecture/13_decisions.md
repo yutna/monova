@@ -511,3 +511,26 @@ goes through core, which scopes every key to the tenant.
 no cache can serve one tenant's data to another. Each operation carries
 a budget entry and a preload list, and caching needs a measurement
 first.
+
+### ADR-26 — Security controls live in core, with Rails' own tools
+
+Status: Accepted
+
+**Context.** The OWASP API Security Top 10 (2023) names the risks an
+API must answer. Most are already settled by the tenancy, token, data
+and integration records; the rest (writable fields, rate limits,
+transport, the route inventory, secrets and scanning) need one home,
+and each extra gem is one more thing an adopter must keep patched.
+
+**Decision.** Use what Rails 8.1 ships: strong parameters with
+`params.expect`, the controller `rate_limit` backed by Solid Cache,
+`force_ssl` and host authorization, encrypted credentials per
+environment, Brakeman and `bundler-audit`. Core owns the rate limits
+and the upload endpoint, and keys every limit by an ID or a digest.
+Rack::Attack and secure-header gems are not added.
+
+**Consequences.** Security behaviour sits in one engine and one file,
+and the template adds no security gem. Rate limits use fixed windows in
+the database, which is coarse but needs no Redis. A limit that must
+apply before Rails runs, such as one per connection, belongs to the
+proxy and is a deploy decision (`09_observability_ops.md`).
