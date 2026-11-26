@@ -399,3 +399,22 @@ Adding anything from the excluded list needs a new ADR.
 **Consequences.** The template stays small enough to understand in full.
 An adopter who needs an excluded feature records why in an ADR and owns
 its design.
+
+### ADR-21 — Personal data is classified, encrypted and kept briefly
+
+Status: Accepted
+
+**Context.** An API that stores people's data is liable for every copy
+of it: in columns, logs, job queues, caches and backups. Data nobody
+classified is copied freely, and data nobody deletes is kept forever.
+
+**Decision.** Every column has a data class. Sensitive values are
+encrypted with Active Record encryption, values that are only compared
+are stored as keyed digests, and personal values never leave their
+table for logs, jobs, caches or events. Changes that matter leave an
+append-only audit event without personal values, and every kind of data
+has a retention period after which a recurring job deletes it.
+
+**Consequences.** A leaked log or database copy exposes far less, and an
+erasure request has a defined path. Every new column needs a class, and
+encrypted columns cannot be searched except through a digest.
