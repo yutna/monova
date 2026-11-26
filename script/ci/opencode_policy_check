@@ -17,9 +17,6 @@ ROOT = File.expand_path("../..", __dir__)
 
 Policy = Struct.new(:action, :resource, :effect, keyword_init: true)
 
-PUSH_MAIN = /\Ashell:git push (?:origin main(?:\s.*)?|\* main(?:\s.*)?|\*:main|\*HEAD:main\*?)\z/
-FORCE_PUSH = /\Ashell:git push (?:--force.*|-f.*|\* --force.*|\* -f.*)\z/
-
 def exact_policy(action, resource)
   lambda do |policy|
     policy.action == action && policy.resource == resource && policy.effect == "deny"
@@ -27,8 +24,17 @@ def exact_policy(action, resource)
 end
 
 RULES = [
-  [ "push to main", ->(policy) { policy.action == "tool.use" && policy.effect == "deny" && policy.resource.to_s.match?(PUSH_MAIN) } ],
-  [ "force push", ->(policy) { policy.action == "tool.use" && policy.effect == "deny" && policy.resource.to_s.match?(FORCE_PUSH) } ],
+  [ "push origin main", exact_policy("tool.use", "shell:git push origin main") ],
+  [ "push origin main with arguments", exact_policy("tool.use", "shell:git push origin main *") ],
+  [ "push a branch to main", exact_policy("tool.use", "shell:git push * main") ],
+  [ "push a refspec to main", exact_policy("tool.use", "shell:git push *:main") ],
+  [ "push HEAD to main", exact_policy("tool.use", "shell:git push *HEAD:main*") ],
+  [ "push --force", exact_policy("tool.use", "shell:git push --force*") ],
+  [ "push -f", exact_policy("tool.use", "shell:git push -f*") ],
+  [ "push --force with a remote", exact_policy("tool.use", "shell:git push * --force*") ],
+  [ "push -f with a remote", exact_policy("tool.use", "shell:git push * -f*") ],
+  [ "push --delete", exact_policy("tool.use", "shell:git push * --delete *") ],
+  [ "push delete a refspec", exact_policy("tool.use", "shell:git push * :*") ],
   [ "gh pr merge", exact_policy("tool.use", "shell:gh pr merge*") ],
   [ "gh api", exact_policy("tool.use", "shell:gh api*") ],
   [ "gh release", exact_policy("tool.use", "shell:gh release*") ],
