@@ -112,9 +112,10 @@ server and does not claim to conform to one.
   token, gets `401` `unauthenticated` with a
   `WWW-Authenticate: Bearer` header (RFC 6750 §3). The problem does not
   say which of these it was.
-- Only the token endpoint (AUTH-02) and the health checks
-  (`09_observability_ops.md`) skip authentication, and the document
-  marks them with an empty `security` list (API-03).
+- Only the token endpoint (AUTH-02), the health checks
+  (`09_observability_ops.md`) and the inbound webhook receivers, which
+  verify a signature instead (INT-12), skip bearer authentication, and
+  the document marks them with an empty `security` list (API-03).
 - Authentication happens before any other work, including request
   validation (API-04), so an anonymous caller learns nothing about the
   shape of an endpoint.

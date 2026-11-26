@@ -24,12 +24,12 @@ Standard Webhooks specification (ADR-24).
 
 - Every job inherits `Acme::Core::Job`, defined in core's public
   surface (ARCH-03), and lives in its engine's `app/jobs/` (DOM-01).
-- The base job takes `tenant_id:` and `principal:` keyword arguments,
-  sets `Current` from them, and opens the tenancy helper (AUTH-09,
-  AUTH-11). A command that enqueues a job passes the tenant and the
-  principal it received (AUTH-10).
-- The base job sets `enqueue_after_transaction_commit = true` (DOM-05);
-  engines do not change it.
+- The base job takes `tenant_id:`, `principal_type:` and
+  `principal_id:` keyword arguments, sets `Current` from them, and opens
+  the tenancy helper (AUTH-09, AUTH-11). A command that enqueues a job
+  passes the tenant and the principal it received (AUTH-10).
+- A job enqueued in a transaction is pushed only after the commit
+  (DOM-05).
 - The queue adapter is Solid Queue, in its own `queue` database
   (ADR-04). Engines name no other adapter.
 
@@ -124,7 +124,7 @@ would lose the record of that call.
   over `core_tenants` and enqueues one job per tenant, or runs
   `with_tenant` once per tenant. It logs one line per run with its
   class, the number of tenants it touched and their IDs, never names.
-- Finished jobs are kept 1 day (DATA-15). Failed executions are kept
+- Finished jobs are kept as DATA-15 says. Failed executions are kept
   until someone retries or discards them.
 
 ### INT-08 — Outbound HTTP goes through core's client (MUST · ADR-24)
@@ -222,10 +222,15 @@ own network.
 
 ### INT-12 — Inbound webhooks are verified and stored once (MUST · ADR-24)
 
-- An outside service posts to `/webhooks/<provider>/<client_id>`,
-  outside `/v1` and outside bearer authentication. Each provider is a
-  controller in the engine that uses it, inheriting core's
-  `Acme::Core::WebhooksController`.
+- An outside service posts to `/v1/webhooks/<provider>/<client_id>`.
+  Each provider is a controller in the engine that uses it, inheriting
+  core's `Acme::Core::WebhooksController`, which checks a signature
+  instead of a bearer token (AUTH-04).
+- Each receiver is an operation in the engine's fragment (API-03) with
+  an empty `security` list. Its request schema is the provider's and
+  stays open to added fields, the one exception to closed request
+  schemas, because the provider adds fields without notice. The
+  signature is checked before the request is validated (API-04).
 - The client ID names a machine client of the tenant (AUTH-13) with no
   scopes. Core finds it with the AUTH-07 lookup function, so the tenant
   comes from that record, never from the payload, and an unknown client
