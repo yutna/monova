@@ -295,7 +295,23 @@ none, so the adopter's review and runbooks check them.
 
 ### AI
 
-`15_working_with_ai.md` adds its rows here when it is drafted.
+| Rule | Guard | Target | Now |
+| --- | --- | --- | --- |
+| AI-01 | `npm run docs:check` | review | review |
+| AI-02 | — | review | review |
+| AI-03 | — | review | review |
+| AI-04 | — | review | review |
+| AI-05 | — | review | review |
+| AI-06 | — | review | review |
+| AI-07 | `npm run docs:check` fails without the section | enforced | review |
+| AI-08 | — | review | review |
+| AI-09 | — | review | review |
+
+- AI-01: `docs:check` fails on a missing or superseded ID in
+  `AGENTS.md`, `CLAUDE.md` and `.opencode/agents/`. It does not read
+  task skills or engine guides yet, and restated rule text is reviewed.
+- AI-07: the template's `AGENTS.md` is still the build contract, with
+  no "Pack versus project" section to check.
 
 ## Canaries
 
