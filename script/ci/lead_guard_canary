@@ -1,0 +1,100 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Canary for the Claude lead's PreToolUse hook (protocol §3 and §10).
+# Each case feeds the hook the JSON Claude Code would send and checks the
+# exit code: 2 blocks the tool call, 0 allows it.
+
+require "fileutils"
+require "json"
+require "open3"
+require "tmpdir"
+
+root = File.expand_path("../..", __dir__)
+hook = File.join(root, ".claude", "hooks", "lead_guard")
+abort "lead_guard_canary: #{hook} is missing or not executable; checked 0" unless File.executable?(hook)
+
+Case = Struct.new(:name, :tool, :input, :env, :expected, keyword_init: true)
+
+def payload(tool, input)
+  JSON.generate("tool_name" => tool, "tool_input" => input)
+end
+
+def file_tool(name, tool, path, expected, env: {})
+  Case.new(name: name, tool: tool, input: { "file_path" => path }, env: env, expected: expected)
+end
+
+def bash(name, command, expected)
+  Case.new(name: name, tool: "Bash", input: { "command" => command }, env: {}, expected: expected)
+end
+
+failures = 0
+cases = []
+
+Dir.mktmpdir("monova-lead-guard-worktrees") do |worktrees|
+  Dir.mktmpdir("monova-lead-guard-outside") do |outside|
+    worktree = File.join(worktrees, "feat-1")
+    worktree_env = { "MONOVA_WORKTREES" => worktrees }
+
+    cases = [
+      file_tool("Edit an implementation file", "Edit", "app/models/x.rb", 2),
+      file_tool("Write a development document", "Write", "docs/development/x.md", 0),
+      file_tool("Write an implementation file in a worktree", "Write",
+                File.join(worktree, "config/ci.rb"), 2, env: worktree_env),
+      file_tool("Write a control file in a worktree", "Write",
+                File.join(worktree, "AGENTS.md"), 0, env: worktree_env),
+      file_tool("Write a file outside the repository", "Write",
+                File.join(outside, "x.rb"), 0),
+      file_tool("MultiEdit an implementation file", "MultiEdit", "app/models/x.rb", 2),
+      bash("redirect into an implementation path", "echo hi > app/x.rb", 2),
+      bash("redirect without a space", "echo hi >app/x.rb", 2),
+      bash("append to a dependency file", "cat a >> Gemfile", 2),
+      bash("sed -i on an implementation file", "sed -i s/a/b/ config/ci.rb", 2),
+      bash("Rails generator", "bin/rails generate model X", 2),
+      bash("add a gem", "bundle add rspec-rails", 2),
+      bash("git checkout an implementation file", "git checkout -- app/x.rb", 2),
+      bash("pipe a gate command", "bin/ci 2>&1 | tail -20", 0),
+      bash("redirect stderr of a test command", "bin/rails test 2>/dev/null", 0),
+      bash("redirect a read-only command outside the repository",
+           "gh pr diff 12 > /tmp/x.diff", 0),
+      bash("read an implementation file", "cat config/ci.rb", 0),
+      bash("create a branch", "git checkout -b feat/1", 0),
+      bash("copy outside the repository before the gate",
+           "cp -R a /tmp/x && bin/ci", 0),
+      bash("edit outside the repository before the gate",
+           "sed -i s/a/b/ /tmp/plan.md; bin/ci", 0),
+      bash("copy into an implementation path after a no-op",
+           "true && cp x lib/y.rb", 2)
+    ]
+
+    cases.each do |test_case|
+      env = {
+        "CLAUDE_PROJECT_DIR" => root,
+        "MONOVA_WORKTREES" => nil,
+        "XDG_STATE_HOME" => nil
+      }.merge(test_case.env)
+      output, status = Open3.capture2e(
+        env,
+        hook,
+        stdin_data: payload(test_case.tool, test_case.input),
+        chdir: root
+      )
+      actual = status.exitstatus
+
+      if actual == test_case.expected
+        puts "ok: #{test_case.name} (exit #{actual})"
+      else
+        failures += 1
+        warn "lead_guard_canary: #{test_case.name} exited #{actual}, expected #{test_case.expected}"
+        warn output unless output.empty?
+      end
+    end
+  end
+end
+
+if cases.empty? || failures.positive?
+  warn "lead_guard_canary: checked #{cases.length} cases; failures=#{failures}"
+  exit 1
+end
+
+puts "lead_guard_canary: checked #{cases.length} cases; failures=0"

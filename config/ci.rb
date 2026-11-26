@@ -6,6 +6,10 @@ CI.run do
   step "Style: Ruby", "bin/rubocop"
   step "Style: Markdown", "test -d node_modules || npm ci && npm run lint:md"
 
+  step "Guards: Lead guard canary", "script/ci/lead_guard_canary"
+  step "Guards: OpenCode policy", "script/ci/opencode_policy_check"
+  step "Guards: OpenCode policy canary", "script/ci/opencode_policy_check --canary"
+
   step "Security: Gem audit", "bin/bundler-audit"
   step "Security: Brakeman code analysis", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"
   step "Tests: Rails", "bin/rails db:test:prepare test"
