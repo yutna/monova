@@ -489,3 +489,25 @@ failure types, and receivers can verify webhooks with existing
 libraries. Core carries the address check, the signing code and the
 delivery tables, and a provider whose scheme differs needs its own
 verifier.
+
+### ADR-25 — Performance is budgeted and measured in tests
+
+Status: Accepted
+
+**Context.** N+1 queries and slow endpoints arrive one innocent line at
+a time and show up only under production data. Solid Cache and
+Thruster's HTTP cache know nothing about tenants or row-level security
+(ADR-07), so a careless key or header leaks one caller's data to
+another.
+
+**Decision.** Every request has a time budget and every operation a
+query budget, checked by its request spec, with Prosopite and strict
+loading failing the build on N+1 queries. Serializers are plain Ruby
+classes that read only preloaded data; no serialization gem is added.
+Authenticated responses are always `private`, and application caching
+goes through core, which scopes every key to the tenant.
+
+**Consequences.** Regressions fail in CI instead of in production, and
+no cache can serve one tenant's data to another. Each operation carries
+a budget entry and a preload list, and caching needs a measurement
+first.

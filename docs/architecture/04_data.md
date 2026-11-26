@@ -324,6 +324,7 @@ returned.
 | Expired and revoked tokens | 30 days (AUTH-03) |
 | Audit events | 1 year |
 | Finished Solid Queue jobs | 1 day (`clear_finished_jobs_after`) |
+| Solid Cache entries | 1 day (`max_age`, PERF-07) |
 | A deleted tenant's rows | 30 days after the deletion, then erased |
 | Backups | `09_observability_ops.md` |
 
