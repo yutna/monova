@@ -66,14 +66,16 @@ lead reviews it as one and says so in the review.
 
 1. The driver (`script/loop/`, a systemd user timer) checks the budget
    (§9) and starts one fresh headless lead run when no run is active.
-2. The lead reads this protocol and the handoff note, finds the next
+2. The lead follows [loop_prompt.md](loop_prompt.md): it finds the next
    action (a pull request to review, a ready issue to dispatch, a
    milestone to plan or close) and does exactly one of them.
-3. Dispatch: in a git worktree for the issue, the lead runs
+3. Dispatch: in a git worktree for the issue, the lead starts
    `opencode run --agent implementer --format json --auto` with the
-   message `Issue #N`, in the background, and waits for it to exit.
-4. Review (§6). Approved: the lead merges with
-   `gh pr merge --squash --delete-branch` once CI is green.
+   message `Issue #N`, detached, records its process ID, and ends the
+   run. Control-plane changes merge before any issue that relies on
+   their guards is dispatched.
+4. A later run reviews the pull request (§6). Approved: the lead merges
+   with `gh pr merge --squash --delete-branch` once CI is green.
 5. The lead records the result: the handoff note when the state changed,
    `lessons-learned.md` when something surprised it, the metrics (§12).
 6. The run ends. The next timer tick starts a fresh run, so no run carries
@@ -129,9 +131,11 @@ practice) the lead decides and records in an ADR or the pull request.
 
 ## 9. Budget
 
-- The lead stops starting runs when the personal account's weekly usage
-  reaches 95%, and resumes after the weekly reset.
-- On a five-hour limit, the lead waits for that window's reset.
+- The driver stops starting runs when the personal account's weekly
+  usage reaches 95%, and resumes after the weekly reset.
+- On a five-hour limit, the driver waits for that window's reset.
+- The driver reads both from the `rate_limit_event` that every headless
+  run emits with `--output-format stream-json`.
 - Tokens are spent carefully: one action per run, diffs instead of whole
   files, the final report instead of the whole event stream, and briefs
   that name the files to read.
