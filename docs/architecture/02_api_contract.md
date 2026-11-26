@@ -177,6 +177,8 @@ Every error response is an RFC 9457 problem with the media type
   `internal_error` and nothing else; the details go to the logs with the
   request ID (`09_observability_ops.md`).
 - The `status` member always equals the HTTP status.
+- The only exception is the `413` that Thruster and Puma send for an
+  oversized body before Rails runs (PERF-08).
 
 ### API-09 — One error catalog (MUST · ADR-03)
 

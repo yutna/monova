@@ -162,9 +162,11 @@ key alone keeps one tenant's entries from another's.
   uncached path misses PERF-01 or PERF-05; the pull request says which.
   Each cached call sets `expires_in`, and a hot key sets
   `race_condition_ttl` so concurrent misses do not all recompute it.
-- Solid Cache keeps entries at most 1 day (`max_age` in
-  `config/cache.yml`), within the data's retention (DATA-15), and its
-  `max_size` bounds the database.
+- Solid Cache's `max_age` in `config/cache.yml` is 1 day (DATA-15),
+  and `max_size` bounds the database. Solid Cache expires entries in
+  batches only when the cache is written, so an entry may outlive
+  `max_age` while the cache is idle; this is one more reason a value
+  holds no `personal` data.
 
 ### PERF-08 — Request bodies have a size limit (MUST · ADR-25)
 
