@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# lead_guard: a Claude Code PreToolUse hook. The Claude lead may edit only
+# control files and docs inside this repository; implementation files belong
+# to the OpenCode implementer (docs/development/protocol.md §3, §10).
+# Exit 2 blocks the tool call and shows the message to the lead.
+set -euo pipefail
+
+input="$(cat)"
+tool="$(jq -r '.tool_name // empty' <<<"$input")"
+root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+root="${root%/}"
+# Implementer worktrees live outside the repository (protocol §5).
+worktrees="${MONOVA_WORKTREES:-${XDG_STATE_HOME:-$HOME/.local/state}/monova-loop/worktrees}"
+worktrees="${worktrees%/}"
+
+block() {
+  printf 'lead_guard: %s\n' "$1" >&2
+  printf 'The lead does not implement. Put this in an issue for the implementer (protocol §3).\n' >&2
+  exit 2
+}
+
+# Relative path of a repository file, with a worktree prefix removed;
+# empty when the path is outside the repository.
+repo_path() {
+  local p="$1"
+  case "$p" in
+    /*) ;;
+    *) p="$PWD/$p" ;;
+  esac
+  case "$p" in
+    "$worktrees"/*) p="${p#"$worktrees"/}"; p="${p#*/}" ;;
+    "$root"/*) p="${p#"$root"/}" ;;
+    *) printf ''; return ;;
+  esac
+  printf '%s' "$p"
+}
+
+allowed_path() {
+  case "$1" in
+    AGENTS.md | CLAUDE.md) return 0 ;;
+    .claude/*) return 0 ;;
+    .opencode/opencode.jsonc | .opencode/agents/*) return 0 ;;
+    docs/architecture/* | docs/development/*) return 0 ;;
+    .github/ISSUE_TEMPLATE/* | .github/pull_request_template.md) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+case "$tool" in
+  Edit | Write | MultiEdit | NotebookEdit)
+    file="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input")"
+    [ -z "$file" ] && exit 0
+    rel="$(repo_path "$file")"
+    [ -z "$rel" ] && exit 0
+    allowed_path "$rel" || block "$tool on $rel is outside the lead's files"
+    ;;
+  Bash)
+    cmd="$(jq -r '.tool_input.command // empty' <<<"$input")"
+    impl='(^|[[:space:]"'"'"'=/>])(app|engines|config|db|lib|spec|test|bin|script|public|vendor)/|(^|[[:space:]"'"'"'=/>])(Gemfile|Gemfile\.lock|package\.json|package-lock\.json|mise\.toml|Dockerfile|Rakefile|\.rubocop\.yml)([[:space:]"'"'"';|&)]|$)'
+    # A redirect whose target is an implementation path.
+    targets="$(grep -Eo '>>?[[:space:]]*[^&[:space:];|)]+' <<<"$cmd" | sed -E 's/^>>?[[:space:]]*//' || true)"
+    while IFS= read -r target; do
+      [ -z "$target" ] && continue
+      if grep -Eq "$impl" <<<" $target"; then
+        block "this shell command redirects into an implementation path"
+      fi
+    done <<<"$targets"
+    # A file-writing command next to an implementation path.
+    write='([[:space:]]tee[[:space:]]|sed[[:space:]]+-i|perl[[:space:]]+-[a-z]*i|[[:space:]]truncate[[:space:]]|(^|[;&|[:space:]])(cp|mv|rm|install|patch|ln)[[:space:]]|git[[:space:]]+apply|git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]|[^-]))'
+    if grep -Eq "$write" <<<"$cmd" && grep -Eq "$impl" <<<"$cmd"; then
+      block "this shell command writes to an implementation path"
+    fi
+    if grep -Eq '(^|[;&|[:space:]])((bin/)?rails|bundle exec rails)[[:space:]]+(g|generate|destroy)[[:space:]]|bundle[[:space:]]+(add|update|remove)|npm[[:space:]]+(install|i|uninstall)[[:space:]]+[^-]' <<<"$cmd"; then
+      block "generators and dependency changes are implementation work"
+    fi
+    ;;
+esac
+exit 0

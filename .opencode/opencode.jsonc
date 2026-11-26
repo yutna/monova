@@ -1,4 +1,100 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  // Project skills are discovered automatically from .opencode/skills.
+  // Control file: only the Claude lead changes it (docs/development/protocol.md).
+  // The implementer model is the opencode-go subscription model. Never use a
+  // free model (opencode/*-free); agents pin the same model.
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "default_agent": "implementer",
+  // Project skills are discovered from .opencode/skills. OpenCode also reads
+  // .claude/skills; the lead's lead-* skills are denied below.
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "allow" },
+    { "action": "external_directory", "resource": "*", "effect": "deny" },
+    { "action": "websearch", "resource": "*", "effect": "deny" },
+    { "action": "skill", "resource": "lead-*", "effect": "deny" }
+  ],
+  // Policies are hard denies: no permission rule, agent or --auto run can
+  // override them. Unattended runs use `opencode run --auto`, which approves
+  // everything that is not denied, so every forbidden action is listed here.
+  "policies": [
+    { "action": "tool.use", "resource": "shell:git push origin main", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push origin main *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push * main", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push *:main", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push *HEAD:main*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push --force*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push -f*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push * --force*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push * -f*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push * --delete *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push * :*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git branch -D *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git tag *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git config *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git * --no-verify*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git * --no-gpg-sign*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh pr merge*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh pr close*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh pr review*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh issue close*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh issue delete*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh issue create*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh release*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh api*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh label*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh repo*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh secret*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh variable*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh workflow*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh ruleset*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh auth*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:sudo *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:rm -rf /*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:rm -rf ~*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:rm -rf .git*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:curl *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:wget *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:opencode *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:claude *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:kamal *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:bin/kamal *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:*credentials:edit*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:*master.key*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:*credentials/*.key*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:*RAILS_MASTER_KEY*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:printenv*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:env", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.env", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.env.*", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.key", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.pem", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:config/master.key", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:config/credentials/*.key", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:*.env", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:*.env.*", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:*.key", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:config/credentials*", "effect": "deny" },
+    // Control files belong to the lead. The implementer reports spec
+    // feedback in docs/architecture/lessons-learned.md (allowed) and an issue
+    // comment; it never edits the rules, its own instructions or its fence.
+    { "action": "tool.use", "resource": "edit:docs/architecture/0*", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:docs/architecture/1*", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:docs/development/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:AGENTS.md", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:CLAUDE.md", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.claude/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.opencode/opencode.jsonc", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.opencode/agents/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.opencode/plugins/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.github/ISSUE_TEMPLATE/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.github/pull_request_template.md", "effect": "deny" },
+    { "action": "tool.use", "resource": "external_directory:*", "effect": "deny" },
+    { "action": "tool.use", "resource": "skill:lead-*", "effect": "deny" },
+    { "action": "mcp.use", "resource": "*", "effect": "deny" },
+    { "action": "plugin.use", "resource": "*", "effect": "deny" },
+    { "action": "websearch.use", "resource": "*", "effect": "deny" }
+  ],
+  "compaction": {
+    "auto": true
+  }
 }
