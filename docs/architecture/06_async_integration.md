@@ -73,7 +73,7 @@ matching `retry_on` becomes a failed execution at once.
 - A domain error (DOM-06), `ActiveRecord::RecordInvalid` and
   `ActiveJob::DeserializationError` are never retried; the base job
   discards them, logs the error code, and reports them to error
-  tracking (`09_observability_ops.md`).
+  tracking (OPS-04).
 - `retry_on StandardError` and `rescue StandardError` in a job are not
   used; an unexpected error must reach a failed execution.
 - Failed executions are reviewed from the jobs dashboard. Retrying one

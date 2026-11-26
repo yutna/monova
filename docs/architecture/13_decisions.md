@@ -361,7 +361,7 @@ deployment settings are placeholders that each adopter replaces.
 
 **Consequences.** Any server that runs containers can host the
 application. The adopter operates the servers, backups and monitoring
-that `09_observability_ops.md` describes.
+that `09_observability_ops.md` describes (OPS-07 to OPS-09).
 
 ### ADR-19 — Tools guard, people decide, AI builds
 
@@ -533,4 +533,23 @@ Rack::Attack and secure-header gems are not added.
 and the template adds no security gem. Rate limits use fixed windows in
 the database, which is coarse but needs no Redis. A limit that must
 apply before Rails runs, such as one per connection, belongs to the
-proxy and is a deploy decision (`09_observability_ops.md`).
+proxy and is a deploy decision (OPS-06).
+
+### ADR-27 — Structured events, OpenTelemetry traces and Rails.error
+
+Status: Accepted
+
+**Context.** An operator must follow one request into its jobs and
+outbound calls without reading personal data. Rails 8.1 ships a
+structured event reporter and an error reporter, and OpenTelemetry is
+the vendor-neutral standard for traces.
+
+**Decision.** Production writes `Rails.event` events as JSON lines to
+standard output through core's subscriber. Core sets the request ID,
+trace ID and tenant in the event context. Traces use the OpenTelemetry
+SDK, exported over OTLP only when an endpoint is configured. Errors go
+through `Rails.error`; a vendor is a subscriber with its own ADR.
+
+**Consequences.** No logging, tracing or error vendor is bound into the
+template. Logs, traces and errors join on the request ID and trace ID.
+The adopter runs the collector and the alerting.

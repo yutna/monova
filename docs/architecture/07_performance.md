@@ -35,7 +35,7 @@ neither Solid Cache nor an HTTP cache knows about row-level security
   `SET LOCAL statement_timeout` inside its own transaction and states
   the reason in a comment; nothing raises the setting for a whole
   process.
-- Response times are logged per operation (`09_observability_ops.md`),
+- Response times are logged per operation (OPS-02),
   so the budget is checked against production, not guessed.
 
 ### PERF-02 — Collections are bounded and indexed (MUST · ADR-25)
@@ -77,7 +77,7 @@ neither Solid Cache nor an HTTP cache knows about row-level security
 - `action_on_strict_loading_violation` is `:raise` in development and
   test. In production it is `:log`, and core subscribes to
   `strict_loading_violation.active_record` and reports each one as an
-  error with the model and the association (`09_observability_ops.md`),
+  error with the model and the association (OPS-04),
   so a missed preload slows a response but never breaks it.
 - Strict loading marks only the records the relation returns, not the
   records preloaded beneath them; PERF-04 catches the deeper levels.
@@ -140,7 +140,7 @@ Thruster caches any `GET` or `HEAD` response marked `public` with a
   header.
 - Thruster compresses responses and pads them against BREACH by
   default; the template keeps that setting
-  (`09_observability_ops.md`).
+  (OPS-06).
 
 ### PERF-07 — Caching goes through core, keyed by tenant (MUST · ADR-25)
 

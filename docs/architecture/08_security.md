@@ -73,6 +73,8 @@ discipline even though the counters are not tenant data.
 | Every authenticated request | Tenant ID and client app ID | 600 per minute |
 | Every authenticated request | Tenant ID | 3,000 per minute |
 
+- The health check (OPS-05) is the only route outside core's base
+  controller; it touches no database and has no limit.
 - The defaults live in `config/rate_limits.yml`, which core reads at
   boot, so an adopter tunes a number without touching code. An endpoint
   MAY have a tighter limit through core's helper; none has a looser one.
@@ -84,7 +86,7 @@ discipline even though the counters are not tenant data.
   which covers kamal-proxy and Thruster on the same host. A deploy that
   puts another proxy or a CDN in front adds its ranges to
   `config.action_dispatch.trusted_proxies`; otherwise every caller
-  shares the proxy's limit (`09_observability_ops.md`).
+  shares the proxy's limit (OPS-06).
 - In production the store is Solid Cache, whose `increment` locks the
   entry's row and keeps its first expiry, so concurrent requests count
   correctly. The test environment uses `:null_store`, which never
@@ -112,7 +114,7 @@ has limits beyond SEC-02.
   anyone lock out any user; the limit slows the guessing instead.
 - Each failed grant and each `429` on this endpoint is logged with the
   client ID and the limit name, never the email or the password
-  (DATA-13), so an attack shows in the logs (`09_observability_ops.md`).
+  (DATA-13), so an attack shows in the logs (OPS-02).
 - Any other flow that costs money or reveals whether something exists,
   such as sending an invitation or a verification message, gets its own
   limit through core's helper, keyed by tenant and principal, and its
@@ -153,7 +155,8 @@ has limits beyond SEC-02.
 
 - A kernel spec lists `Rails.application.routes` in the production
   environment and fails when a route has no operation in the bundle
-  (API-03). Only the health check is exempt, and it is listed by name.
+  (API-03). The health check (OPS-05) is in the bundle too, with an
+  empty `security` list.
 - `config.active_storage.draw_routes` is `false`, because Active
   Storage's default routes, including its direct upload endpoint, need
   no authentication. Uploads go through core (SEC-09).
