@@ -155,6 +155,7 @@ the application has no JavaScript runtime dependency.
 | API contract checks | `openapi_first` |
 | Authorization | Action Policy |
 | Engine boundaries | Packwerk |
+| Migration safety | `strong_migrations` |
 | Tests | RSpec and its ecosystem, listed in `10_testing.md` |
 | Static checks | RuboCop and its plugins, Brakeman, `bundler-audit` |
 | Markdown lint | `markdownlint-cli2`, default rules, no overrides |
