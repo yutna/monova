@@ -74,8 +74,10 @@ lead reviews it as one and says so in the review.
    milestone to plan or close) and does exactly one of them.
 3. Dispatch: in a git worktree for the issue, the lead starts
    `opencode run --agent implementer --format json --auto` with the
-   message `Issue #N`, detached, records its process ID, and ends the
-   run. Control-plane changes merge before any issue that relies on
+   message `Issue #N` as a transient systemd user unit
+   (`systemd-run --user`), so it outlives the lead run. The lead writes
+   the unit's main process ID to the loop's `implementer.pid` and ends
+   the run. Control-plane changes merge before any issue that relies on
    their guards is dispatched.
 4. A later run reviews the pull request (§6). Approved: the lead merges
    with `gh pr merge --squash --delete-branch` once CI is green.
@@ -150,7 +152,7 @@ practice) the lead decides and records in an ADR or the pull request.
 | Implementer cannot push to `main` or merge | OpenCode `policies` | enforced |
 | Implementer cannot edit control files | OpenCode `policies` | enforced |
 | Implementer cannot read secrets | OpenCode `policies` | enforced |
-| `main` takes only squash merges with CI | GitHub ruleset | enforced |
+| `main` takes only squash merges with CI | `ruleset_check` | enforced |
 | Lead edits only control files and docs | `lead_guard` hook | enforced |
 | Shell writes that bypass the edit tools | Lead and gate review | review |
 | Review never contains answer text | Gate review | review |
@@ -159,6 +161,8 @@ The OpenCode policies cover the edit and read tools and the listed shell
 commands; a shell redirect can still write a file, so the review checks
 that the diff touches only allowed paths. Every guard marked enforced has
 a canary that proves it fails when it should.
+The `main` ruleset lives in GitHub; `script/ci/ruleset_check` reads it
+in CI and fails when it drifts, and its `--canary` mode is the canary.
 
 ## 11. Lessons and feedback
 
@@ -171,7 +175,9 @@ a canary that proves it fails when it should.
 
 ## 12. Metrics
 
-For each issue the lead records in the pull request's final comment: the
-implementer's wall time, the number of review rounds, the tokens of the
-implementer session (from its `step_finish` events), and the defects the
-review found. The gate summarises them per milestone.
+For each implementer issue the lead records in the pull request's final
+comment: the implementer's wall time, the number of review rounds, the
+tokens of the implementer session (from its `step_finish` events), and
+the defects the review found. A lead pull request has no implementer
+session, so it records no metrics. The gate summarises them per
+milestone.
