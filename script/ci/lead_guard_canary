@@ -28,6 +28,48 @@ def bash(name, command, expected)
   Case.new(name: name, tool: "Bash", input: { "command" => command }, env: {}, expected: expected)
 end
 
+WIRING_TOOLS = %w[Edit Write MultiEdit NotebookEdit Bash].freeze
+
+def matcher_covers?(matcher, tool)
+  return true if matcher.nil? || matcher.empty? || matcher == "*"
+  return true if matcher.split("|").map(&:strip).include?(tool)
+
+  # Anchored, so "Edit" does not stand in for "MultiEdit" or "NotebookEdit".
+  Regexp.new("\\A(?:#{matcher})\\z").match?(tool)
+rescue RegexpError
+  false
+end
+
+# Returns the reasons .claude/settings.json does not register lead_guard,
+# or an empty array when it does.
+def wiring_errors(settings_path)
+  return [ "#{settings_path} is missing" ] unless File.file?(settings_path)
+
+  data = begin
+    JSON.parse(File.read(settings_path))
+  rescue JSON::ParserError => error
+    return [ "#{settings_path} is not valid JSON: #{error.message}" ]
+  end
+
+  hooks = data.is_a?(Hash) ? data["hooks"] : nil
+  entries = hooks.is_a?(Hash) ? Array(hooks["PreToolUse"]) : []
+  matchers = entries.filter_map do |entry|
+    next unless entry.is_a?(Hash)
+
+    commands = Array(entry["hooks"]).select do |hook|
+      hook.is_a?(Hash) && hook["type"] == "command" &&
+        hook["command"].to_s.include?(".claude/hooks/lead_guard")
+    end
+    entry["matcher"] unless commands.empty?
+  end
+
+  return [ "no PreToolUse command hook runs .claude/hooks/lead_guard" ] if matchers.empty?
+
+  WIRING_TOOLS.filter_map do |tool|
+    "lead_guard matcher does not cover #{tool}" unless matchers.any? { |matcher| matcher_covers?(matcher, tool) }
+  end
+end
+
 failures = 0
 cases = []
 
@@ -92,9 +134,71 @@ Dir.mktmpdir("monova-lead-guard-worktrees") do |worktrees|
   end
 end
 
-if cases.empty? || failures.positive?
-  warn "lead_guard_canary: checked #{cases.length} cases; failures=#{failures}"
+wiring_checks = 0
+wiring_failures = 0
+settings = File.join(root, ".claude", "settings.json")
+
+wiring_checks += 1
+errors = wiring_errors(settings)
+if errors.empty?
+  puts "ok: lead_guard is a PreToolUse command hook for #{WIRING_TOOLS.join("|")}"
+else
+  wiring_failures += 1
+  errors.each { |error| warn "lead_guard_canary: wiring: #{error}" }
+end
+
+source_settings = begin
+  JSON.parse(File.read(settings))
+rescue StandardError
+  {}
+end
+
+Dir.mktmpdir("monova-lead-guard-settings") do |settings_dir|
+  settings_cases = [ [ "an unmodified settings copy passes", source_settings, false ] ]
+
+  without_entry = Marshal.load(Marshal.dump(source_settings))
+  Array(without_entry.dig("hooks", "PreToolUse")).each do |entry|
+    next unless entry.is_a?(Hash)
+
+    entry["hooks"] = Array(entry["hooks"]).reject do |hook|
+      hook.is_a?(Hash) && hook["command"].to_s.include?(".claude/hooks/lead_guard")
+    end
+  end
+  settings_cases << [ "a copy without the lead_guard entry fails", without_entry, true ]
+
+  WIRING_TOOLS.each do |dropped|
+    copy = Marshal.load(Marshal.dump(source_settings))
+    Array(copy.dig("hooks", "PreToolUse")).each do |entry|
+      next unless entry.is_a?(Hash)
+      next unless Array(entry["hooks"]).any? do |hook|
+        hook.is_a?(Hash) && hook["command"].to_s.include?(".claude/hooks/lead_guard")
+      end
+
+      entry["matcher"] = (WIRING_TOOLS - [ dropped ]).join("|")
+    end
+    settings_cases << [ "a copy whose matcher drops #{dropped} fails", copy, true ]
+  end
+
+  settings_cases.each do |name, data, should_fail|
+    wiring_checks += 1
+    copy_path = File.join(settings_dir, "settings.json")
+    File.write(copy_path, JSON.pretty_generate(data))
+    copy_errors = wiring_errors(copy_path)
+
+    if copy_errors.empty? == !should_fail
+      puts "ok: #{name}"
+    else
+      wiring_failures += 1
+      warn "lead_guard_canary: #{name} did not fail as expected"
+      copy_errors.each { |error| warn "lead_guard_canary: wiring: #{error}" }
+    end
+  end
+end
+
+total_failures = failures + wiring_failures
+if cases.empty? || wiring_checks.zero? || total_failures.positive?
+  warn "lead_guard_canary: checked #{cases.length} hook cases and #{wiring_checks} wiring cases; failures=#{total_failures}"
   exit 1
 end
 
-puts "lead_guard_canary: checked #{cases.length} cases; failures=0"
+puts "lead_guard_canary: checked #{cases.length} hook cases and #{wiring_checks} wiring cases; failures=0"
