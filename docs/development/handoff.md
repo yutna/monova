@@ -79,6 +79,30 @@ Rule format, statuses and precedence follow Rafelo
 only with a CI tool and a canary, otherwise review. The pack-versus-project
 table is built against the vendored OO pack version.
 
+## Differences from Rafelo's way of working
+
+| Topic | Rafelo | Monova |
+| --- | --- | --- |
+| Who drives OpenCode | Cron supervisor | Fresh headless lead run |
+| Review | Owner-triggered rounds | Every PR, then a milestone gate |
+| Merge and release | Owner | Lead, after CI and the gate |
+| Spec | Written before the build | Drafted by the lead in v0.4.0 |
+| Protocol for OpenCode | Long continue prompt | Agent prompts, `Issue #N` |
+| OpenCode fence | Instructions only | `policies` hard denies, probed |
+| Lead fence | None | `lead_guard` hook |
+| Delivery | `rails new -m`, kernel update | Template copy-and-own |
+| Build loop host | Host, mise, Postgres container | Same, own container |
+| Adopter environment | Dev Container | Dev Container, proven in CI |
+| GitHub identity | Machine user planned | Owner's account for both roles |
+
+The build loop runs on the host, like Rafelo's: Ruby and Node from
+`mise.toml`, and a PostgreSQL container pinned by version and digest,
+named `monova-postgres` on `127.0.0.1:5433` (5432 belongs to
+`rafelo-postgres`). Adopters get a Dev Container, and a CI job builds it
+and runs `bin/ci` inside it so it cannot rot. Because both roles use the
+owner's GitHub account, a GitHub approval cannot separate them; the
+`REVIEW:` comment is the verdict, as in the OO-skills repository.
+
 ## State
 
 - Milestone v0.3.0 (tooling and pilot) is open.
@@ -95,6 +119,18 @@ table is built against the vendored OO pack version.
 3. Install the driver, update my-notes, and let the loop run.
 4. v0.4.0: draft the specification files in this order: 00, 13, 01, 02,
    03, 04, 05, then the rest; the implementer builds `docs:check`.
+
+## After the major release
+
+The owner decided (2026-11-26): only when both Monova and Rafelo are
+finished (both released, no loop, supervisor or open work running, and
+the only remaining input is feedback from people using the templates),
+the lead runs a retrospective of both repositories' lessons and ways of
+working, then Rafelo changes to work the way Monova does. Either one may
+finish first; wait for the other. The lessons
+also feed Mycelia. Until then, keep every process lesson in
+`docs/architecture/lessons-learned.md` so the retrospective has its
+material.
 
 ## Open questions
 
