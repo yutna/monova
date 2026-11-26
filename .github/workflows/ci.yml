@@ -93,9 +93,28 @@ jobs:
           RAILS_ENV: test
         run: bin/rails db:test:prepare test
 
+  markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: node
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Lint Markdown
+        run: npm run lint:md
+
   ci-ok:
     if: always()
-    needs: [actionlint, scan_ruby, lint, test]
+    needs: [actionlint, scan_ruby, lint, test, markdown]
     runs-on: ubuntu-latest
     steps:
       - name: All required jobs passed
