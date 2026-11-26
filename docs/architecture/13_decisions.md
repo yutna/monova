@@ -442,3 +442,50 @@ publishers never know their subscribers. Delivery is asynchronous, at
 least once and unordered, so subscribers read current state through
 public queries. The outbox and delivery tables need retention, and the
 recurring relay costs one job per tenant per run.
+
+### ADR-23 — Jobs run at least once and are safe to repeat
+
+Status: Accepted
+
+**Context.** Solid Queue keeps jobs in PostgreSQL (ADR-04) and relies
+on Active Job for retries: it never retries by itself, and a worker
+that dies after the work but before the job is marked finished leaves
+it to run again. A job's tenancy transaction (ADR-07) holds a
+connection and its locks for the whole `perform`, and a rollback after
+an outside call loses the record of that call.
+
+**Decision.** Every job is idempotent: it checks state before it acts,
+creates records against unique indexes, and gives each outside effect a
+stable idempotency key. Retries are declared per transient error, never
+for every error. Jobs that call out or run long open the tenancy
+transaction per step, and long work checkpoints with Rails job
+continuations.
+
+**Consequences.** A retry, a manual retry or a duplicate run is safe,
+and failed executions show only real defects. Each job needs a check
+and a spec for its second run, and step jobs must keep each database
+step consistent on its own.
+
+### ADR-24 — Integrations use one HTTP client and Standard Webhooks
+
+Status: Accepted
+
+**Context.** Outside calls fail slowly and partially, `Net::HTTP`
+waits 60 seconds and repeats some requests by default, and webhook URLs
+come from tenants, so a delivery can be aimed at the application's own
+network. Receivers and senders of webhooks need one signing scheme that
+existing libraries already verify.
+
+**Decision.** Every outbound request goes through a core client on
+Ruby's `Net::HTTP`, with short timeouts, no hidden retries, typed
+errors and redacted logs; no HTTP gem is added. Tenant-supplied URLs
+are resolved, checked against private address ranges and connected to
+by the checked address. Webhooks follow the Standard Webhooks
+specification, are delivered from the outbox on a retry schedule, and
+inbound webhooks find their tenant through a machine client.
+
+**Consequences.** Every integration has the same timeouts, logs and
+failure types, and receivers can verify webhooks with existing
+libraries. Core carries the address check, the signing code and the
+delivery tables, and a provider whose scheme differs needs its own
+verifier.

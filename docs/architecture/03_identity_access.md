@@ -112,9 +112,10 @@ server and does not claim to conform to one.
   token, gets `401` `unauthenticated` with a
   `WWW-Authenticate: Bearer` header (RFC 6750 §3). The problem does not
   say which of these it was.
-- Only the token endpoint (AUTH-02) and the health checks
-  (`09_observability_ops.md`) skip authentication, and the document
-  marks them with an empty `security` list (API-03).
+- Only the token endpoint (AUTH-02), the health checks
+  (`09_observability_ops.md`) and the inbound webhook receivers, which
+  verify a signature instead (INT-12), skip bearer authentication, and
+  the document marks them with an empty `security` list (API-03).
 - Authentication happens before any other work, including request
   validation (API-04), so an anonymous caller learns nothing about the
   shape of an endpoint.
@@ -259,7 +260,9 @@ in three layers:
 
 - Core's base job takes the tenant ID and the principal as part of its
   arguments when it is enqueued, from the caller's context, and runs
-  `perform` inside the tenancy helper (AUTH-09) for that tenant.
+  `perform` inside the tenancy helper (AUTH-09) for that tenant. A
+  step job opens the helper around each database step instead, so no
+  network call runs inside a transaction (INT-06).
 - `Current` is not carried into a job; the job sets it again from its
   arguments. A job enqueued without a tenant fails before `perform`.
 - A job that works for every tenant is declared as a system job. It
