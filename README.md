@@ -40,7 +40,7 @@ all meant to be replaced.
 
 ## Requirements
 
-- Ruby 4.0.9
+- Ruby 4.0.10
 - SQLite 3.8 or newer
 - libvips (for Active Storage variants)
 - Docker (optional, for container builds)
