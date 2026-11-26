@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+# Self-test for the Monova loop driver. Uses fake claude and gh binaries
+# and a temporary repository, so it never reaches the network.
+set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DRIVER=$SCRIPT_DIR/driver
+BASE_PATH=$PATH
+
+WORK=$(mktemp -d -- "${TMPDIR:-/tmp}/monova-loop-test.XXXXXX")
+trap 'rm -rf -- "$WORK"' EXIT
+
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+export GIT_AUTHOR_NAME="Monova test"
+export GIT_AUTHOR_EMAIL="test@example.com"
+export GIT_COMMITTER_NAME="Monova test"
+export GIT_COMMITTER_EMAIL="test@example.com"
+
+cases=0
+failures=0
+RC=0
+
+pass() {
+  cases=$((cases + 1))
+  printf 'ok: %s\n' "$1"
+}
+
+fail() {
+  cases=$((cases + 1))
+  failures=$((failures + 1))
+  printf 'not ok: %s\n' "$1"
+}
+
+expect_eq() { # name expected actual
+  if [[ "$2" == "$3" ]]; then
+    pass "$1"
+  else
+    fail "$1 (expected '$2', got '$3')"
+  fi
+}
+
+expect_file() { # name path
+  if [[ -e "$2" ]]; then
+    pass "$1"
+  else
+    fail "$1 (missing $2)"
+  fi
+}
+
+expect_log() { # name text
+  if grep -qF -- "$2" "$CASE/state/loop.log" 2>/dev/null; then
+    pass "$1"
+  else
+    fail "$1 (no '$2' in loop.log)"
+  fi
+}
+
+expect_no_log() { # name text
+  if grep -qF -- "$2" "$CASE/state/loop.log" 2>/dev/null; then
+    fail "$1 (found '$2' in loop.log)"
+  else
+    pass "$1"
+  fi
+}
+
+runs() {
+  if [[ -d "$CASE/state/runs" ]]; then
+    find "$CASE/state/runs" -name '*.jsonl' -type f | wc -l | tr -d ' '
+  else
+    echo 0
+  fi
+}
+
+expect_runs() { # name count
+  expect_eq "$1" "$2" "$(runs)"
+}
+
+make_repo() {
+  local repo=$1 remote=$2
+  git init -q --bare --initial-branch=main "$remote"
+  git init -q --initial-branch=main "$repo"
+  mkdir -p -- "$repo/docs/development"
+  printf '# Probe\n' >"$repo/README.md"
+  printf '# Lead run\n' >"$repo/docs/development/loop_prompt.md"
+  git -C "$repo" add .
+  git -C "$repo" commit -qm "init"
+  git -C "$repo" remote add origin "$remote"
+  git -C "$repo" push -q -u origin main
+  git -C "$repo" fetch -q origin
+}
+
+make_fakes() {
+  cat >"$CASE/bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FAKE_CLAUDE_SLEEP:-}" ]]; then
+  exec sleep "$FAKE_CLAUDE_SLEEP"
+fi
+printf '%s\n' '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.14,"resetsAt":9999999999,"status":"allowed"},"seven_day":{"utilization":0.11,"resetsAt":9999999999,"status":"allowed"}}}}'
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"num_turns":7,"total_cost_usd":0.125,"usage":{}}'
+exit "${FAKE_CLAUDE_EXIT:-0}"
+FAKE_CLAUDE
+
+  cat >"$CASE/bin/gh" <<'FAKE_GH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
+  printf '%s\n' "${FAKE_ISSUES:-[]}"
+elif [[ "${1:-}" == "pr" && "${2:-}" == "list" ]]; then
+  printf '%s\n' "${FAKE_PRS:-[]}"
+else
+  printf '[]\n'
+fi
+FAKE_GH
+
+  chmod +x "$CASE/bin/claude" "$CASE/bin/gh"
+}
+
+new_case() { # name
+  CASE=$WORK/$1
+  mkdir -p -- "$CASE/home" "$CASE/bin" "$CASE/state"
+  export HOME=$CASE/home
+  export MONOVA_LOOP_STATE=$CASE/state
+  export MONOVA_LOOP_REPO=$CASE/repo
+  export PATH=$CASE/bin:$BASE_PATH
+  unset MONOVA_LOOP_TIMEOUT MONOVA_LOOP_IDLE MONOVA_WEEKLY_STOP
+  unset MONOVA_LOOP_CLAUDE FAKE_CLAUDE_EXIT FAKE_CLAUDE_SLEEP
+  unset FAKE_ISSUES FAKE_PRS
+  make_repo "$CASE/repo" "$CASE/remote.git"
+  make_fakes
+}
+
+run_driver() {
+  set +e
+  "$DRIVER" >"$CASE/driver.out" 2>&1
+  RC=$?
+  set -e
+}
+
+write_budget() { # seven_day_utilization five_hour_status
+  local reset
+  reset=$(( $(date +%s) + 3600 ))
+  printf '{"five_hour":{"utilization":0.14,"resetsAt":%s,"status":"%s"},"seven_day":{"utilization":%s,"resetsAt":%s,"status":"allowed"}}\n' \
+    "$reset" "$2" "$1" "$reset" >"$CASE/state/budget.json"
+}
+
+new_case stop
+touch "$CASE/state/STOP"
+run_driver
+expect_eq "STOP skips with exit 0" 0 "$RC"
+expect_runs "STOP starts no run" 0
+
+new_case lock
+set +e
+flock "$CASE/state/lock" "$DRIVER" >"$CASE/driver.out" 2>&1
+RC=$?
+set -e
+expect_eq "a held lock skips with exit 0" 0 "$RC"
+expect_runs "a held lock starts no run" 0
+expect_log "a held lock is logged" "reason=locked"
+
+new_case weekly-stop
+write_budget 0.95 allowed
+run_driver
+expect_eq "weekly at 0.95 skips with exit 0" 0 "$RC"
+expect_runs "weekly at 0.95 starts no run" 0
+expect_log "weekly at 0.95 logs the budget reason" "reason=weekly_budget"
+expect_log "weekly at 0.95 logs the reset time" "seven_day=0.95 resets="
+
+new_case weekly-run
+write_budget 0.94 allowed
+run_driver
+expect_eq "weekly at 0.94 runs with exit 0" 0 "$RC"
+expect_runs "weekly at 0.94 starts one run" 1
+expect_log "weekly at 0.94 logs a successful run" "status=ok exit=0"
+
+new_case five-hour
+write_budget 0.10 rejected
+run_driver
+expect_eq "a rejected five-hour window skips with exit 0" 0 "$RC"
+expect_runs "a rejected five-hour window starts no run" 0
+expect_log "a rejected five-hour window logs the reason" "reason=five_hour"
+expect_log "a rejected five-hour window logs the status" "five_hour_status=rejected"
+
+new_case dirty
+printf 'dirty\n' >>"$CASE/repo/README.md"
+run_driver
+expect_eq "a dirty tree skips with exit 0" 0 "$RC"
+expect_runs "a dirty tree starts no run" 0
+expect_log "a dirty tree logs the reason" "reason=dirty_tree"
+
+new_case not-main
+git -C "$CASE/repo" switch -q -c side
+run_driver
+expect_eq "a checkout not on main skips with exit 0" 0 "$RC"
+expect_runs "a checkout not on main starts no run" 0
+expect_log "a checkout not on main logs the reason" "reason=not_main"
+
+new_case record
+run_driver
+expect_eq "a run exits 0" 0 "$RC"
+expect_file "a run writes budget.json" "$CASE/state/budget.json"
+expect_eq "budget.json holds the last window" "0.11" \
+  "$(jq -r '.seven_day.utilization' "$CASE/state/budget.json")"
+expect_log "a run writes one log line with the result" \
+  "status=ok exit=0 is_error=false num_turns=7 cost_usd=0.125 five_hour=0.14 seven_day=0.11"
+
+new_case idle
+run_driver
+run_driver
+run_driver
+expect_eq "three idle runs exit 0" 0 "$RC"
+expect_file "three idle runs write PAUSED" "$CASE/state/PAUSED"
+expect_log "three idle runs log the pause" "reason=no_progress idle=3"
+expect_runs "three idle runs start three runs" 3
+run_driver
+expect_eq "a paused loop skips with exit 0" 0 "$RC"
+expect_runs "a paused loop starts no new run" 3
+expect_log "a paused loop logs the reason" "reason=paused"
+
+new_case timeout
+export MONOVA_LOOP_TIMEOUT=1
+export FAKE_CLAUDE_SLEEP=5
+run_driver
+expect_eq "a timeout exits 124" 124 "$RC"
+expect_log "a timeout is logged as a timeout" "status=timeout exit=124"
+expect_no_log "a timeout is not logged as success" "status=ok"
+
+if (( cases == 0 )); then
+  echo "loop test: no cases ran" >&2
+  exit 1
+fi
+
+if (( failures > 0 )); then
+  echo "loop test: $cases cases, $failures failed" >&2
+  exit 1
+fi
+
+printf 'loop test: %d cases, 0 failed\n' "$cases"

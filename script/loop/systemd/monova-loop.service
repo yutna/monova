@@ -1,0 +1,11 @@
+[Unit]
+Description=Monova unattended loop driver (one tick)
+Documentation=file://%h/personal/projects/monova/script/loop/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/personal/projects/monova
+ExecStart=/usr/bin/env %h/personal/projects/monova/script/loop/driver
+TimeoutStartSec=4h

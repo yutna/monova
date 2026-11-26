@@ -134,9 +134,29 @@ jobs:
       - name: OpenCode policy canary
         run: script/ci/opencode_policy_check --canary
 
+  loop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: ShellCheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y shellcheck
+          fi
+          shellcheck script/loop/driver script/loop/install \
+            script/loop/uninstall script/loop/test
+
+      - name: Loop driver self-test
+        run: script/loop/test
+
   ci-ok:
     if: always()
-    needs: [actionlint, scan_ruby, lint, test, markdown, guards]
+    needs: [actionlint, scan_ruby, lint, test, markdown, guards, loop]
     runs-on: ubuntu-latest
     steps:
       - name: All required jobs passed

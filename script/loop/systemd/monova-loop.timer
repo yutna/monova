@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Monova loop driver every ten minutes
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/10
+Persistent=true
+Unit=monova-loop.service
+
+[Install]
+WantedBy=timers.target
