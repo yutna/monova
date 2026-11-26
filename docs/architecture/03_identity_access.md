@@ -259,7 +259,9 @@ in three layers:
 
 - Core's base job takes the tenant ID and the principal as part of its
   arguments when it is enqueued, from the caller's context, and runs
-  `perform` inside the tenancy helper (AUTH-09) for that tenant.
+  `perform` inside the tenancy helper (AUTH-09) for that tenant. A
+  step job opens the helper around each database step instead, so no
+  network call runs inside a transaction (INT-06).
 - `Current` is not carried into a job; the job sets it again from its
   arguments. A job enqueued without a tenant fails before `perform`.
 - A job that works for every tenant is declared as a system job. It

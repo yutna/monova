@@ -34,6 +34,7 @@ when the change behind it is committed (ADR-22).
 | The JSON of a resource | Serializer (API-02) | `app/serializers/` |
 | A reaction to an event | Subscriber | `app/subscribers/` |
 | Work that runs later | Job (`06_async_integration.md`) | `app/jobs/` |
+| A call to an outside service | Client (INT-08) | `app/clients/` |
 
 - A command, query or value object that other engines may use lives in
   `app/public/` instead (ARCH-06), in the same namespace, so moving it
