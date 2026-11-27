@@ -44,6 +44,8 @@ all meant to be replaced.
 - Ruby 4.0.10 (installed by mise)
 - Node 26.13.1 (installed by mise)
 - Docker, for the local PostgreSQL container and container builds
+- PostgreSQL 18 client tools, `psql` and `pg_dump`, on `PATH`: Rails loads
+  `db/structure.sql` with `psql`, and dumps it with `pg_dump` after a migration
 
 ## Getting started
 
@@ -54,6 +56,9 @@ database:
 script/dev/postgres
 bin/setup --skip-server
 ```
+
+Docker starts the container. `psql` 18 from the client tools loads
+`db/structure.sql` into the development and test databases.
 
 Start the server:
 
