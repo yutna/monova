@@ -4,11 +4,18 @@
 # ARCH-05: the repository never records a boundary violation in a
 # package_todo.yml. A violation is fixed in the pull request that introduces
 # it, so this check fails when one is tracked or present in the working tree.
+# The --canary mode proves the check fails for a fixture that holds one and
+# passes for a clean fixture (TS-07).
 
+require "fileutils"
 require "open3"
+require "optparse"
+require "rbconfig"
+require "tmpdir"
 
 RULE_ID = "ARCH-05"
 ROOT = File.expand_path("../..", __dir__)
+FIXTURES = File.expand_path("fixtures/package_todo", __dir__)
 FILENAME = "package_todo.yml"
 
 def fail_rule(message)
@@ -16,17 +23,102 @@ def fail_rule(message)
   exit 1
 end
 
-Dir.chdir(ROOT) do
-  tracked, status = Open3.capture2("git", "ls-files", "-z")
-  fail_rule("could not read the tracked files with git") unless status.success?
+def check(root)
+  Dir.chdir(root) do
+    tracked, status = Open3.capture2("git", "ls-files", "-z")
+    fail_rule("could not read the tracked files with git") unless status.success?
 
-  tracked = tracked.split("\0").select { |path| File.basename(path) == FILENAME }
-  unless tracked.empty?
-    fail_rule("tracked package_todo.yml files are forbidden: #{tracked.sort.join(", ")}")
+    tracked = tracked.split("\0").select { |path| File.basename(path) == FILENAME }
+    unless tracked.empty?
+      fail_rule("tracked package_todo.yml files are forbidden: #{tracked.sort.join(", ")}")
+    end
+
+    present = Dir.glob("**/#{FILENAME}").sort
+    unless present.empty?
+      fail_rule("package_todo.yml files are forbidden: #{present.join(", ")}")
+    end
   end
 
-  present = Dir.glob("**/#{FILENAME}").sort
-  unless present.empty?
-    fail_rule("package_todo.yml files are forbidden: #{present.join(", ")}")
-  end
+  puts "package_todo_check: OK (no package_todo.yml)"
+  0
 end
+
+def run_check(root)
+  Open3.capture2e(RbConfig.ruby, File.expand_path(__FILE__), "--root", root)
+end
+
+def canary
+  # Fixture directory => the fixture file to copy as package_todo.yml, or nil
+  # for the clean tree.
+  cases = [
+    [ "clean", nil ],
+    [ "with-violation", "engines/core/#{FILENAME}.fixture" ]
+  ]
+
+  failures = 0
+
+  cases.each do |name, fixture|
+    source = fixture && File.join(FIXTURES, name, fixture)
+    fail_rule("fixture #{name} is missing") if source && !File.file?(source)
+
+    Dir.mktmpdir("package-todo-canary") do |directory|
+      # The guard reads the tracked files with git, so the fixture is a
+      # throwaway repository too.
+      _output, status = Open3.capture2e("git", "init", "-q", directory)
+      fail_rule("could not create the fixture repository for #{name}") unless status.success?
+
+      if source
+        destination = File.join(directory, fixture.sub(/\.fixture\z/, ""))
+        FileUtils.mkdir_p(File.dirname(destination))
+        FileUtils.cp(source, destination)
+      end
+
+      output, status = run_check(directory)
+
+      if fixture.nil?
+        if status.success?
+          puts "ok: #{name} passes"
+        else
+          failures += 1
+          warn "package_todo_check --canary: #{name} failed but must pass"
+          warn output
+        end
+        next
+      end
+
+      detail = output.lines.find do |line|
+        line.include?(RULE_ID) && line.include?(FILENAME)
+      end
+
+      if status.success?
+        failures += 1
+        warn "package_todo_check --canary: #{name} passes but must fail"
+      elsif detail.nil?
+        failures += 1
+        warn "package_todo_check --canary: #{name} does not name #{RULE_ID} and #{FILENAME}"
+        warn output
+      else
+        puts "ok: #{name} fails (#{detail.strip})"
+      end
+    end
+  end
+
+  if failures.positive?
+    warn "package_todo_check --canary: checked #{cases.length} fixtures; failures=#{failures}"
+    return 1
+  end
+
+  puts "package_todo_check --canary: checked #{cases.length} fixtures; failures=0"
+  0
+end
+
+options = { root: ROOT, canary: false }
+OptionParser.new do |parser|
+  parser.banner = "Usage: package_todo_check [--root DIR] [--canary]"
+  parser.on("--root DIR", "Repository root to check") { |value| options[:root] = File.expand_path(value) }
+  parser.on("--canary", "Prove the check fails for a fixture that holds a package_todo.yml") do
+    options[:canary] = true
+  end
+end.parse!
+
+exit(options[:canary] ? canary : check(options[:root]))

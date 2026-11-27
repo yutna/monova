@@ -1,0 +1,125 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# TS-07: every Packwerk guard has a canary. Each case copies the shared
+# fixture root to a temporary directory, adds the case's packages and runs
+# bin/packwerk there. The directory is removed on exit, including when a
+# case fails.
+#
+# ARCH-02: a lower layer may not depend on a higher one (layer checker).
+# ARCH-04: every dependency is declared and the graph has no cycle.
+# ARCH-06: another package may reference only a package's public surface.
+
+require "fileutils"
+require "open3"
+require "rbconfig"
+require "tmpdir"
+
+ROOT = File.expand_path("../..", __dir__)
+FIXTURES = File.expand_path("fixtures/packwerk", __dir__)
+PACKWERK = File.join(ROOT, "bin", "packwerk")
+GEMFILE = File.join(ROOT, "Gemfile")
+ANSI = /\e\[[0-9;]*m/
+VIOLATIONS = [ "Dependency violation", "Privacy violation", "Layer violation" ].freeze
+
+# fixture: the case directory added to the shared base fixture.
+# label: the name shown in the output.
+# must_fail: true when the command must report the violation and exit 1.
+Case = Struct.new(:fixture, :label, :rule, :command, :violation, :must_fail, keyword_init: true)
+
+CASES = [
+  Case.new(fixture: "clean", label: "clean check", rule: nil, command: "check", violation: nil, must_fail: false),
+  Case.new(fixture: "clean", label: "clean validate", rule: nil, command: "validate", violation: nil, must_fail: false),
+  Case.new(fixture: "dependency", label: "dependency", rule: "ARCH-04", command: "check",
+    violation: "Dependency violation", must_fail: true),
+  Case.new(fixture: "privacy", label: "privacy", rule: "ARCH-06", command: "check",
+    violation: "Privacy violation", must_fail: true),
+  Case.new(fixture: "layer", label: "layer", rule: "ARCH-02", command: "check",
+    violation: "Layer violation", must_fail: true),
+  Case.new(fixture: "cycle", label: "cycle", rule: "ARCH-04", command: "validate",
+    violation: "circular dependencies", must_fail: true)
+].freeze
+
+def fail_canary(message)
+  warn "packwerk_canary: #{message}"
+  exit 1
+end
+
+def copy_fixture(fixture, destination)
+  [ "base", fixture ].each do |source|
+    directory = File.join(FIXTURES, source)
+    fail_canary("fixture #{source} is missing") unless Dir.exist?(directory)
+
+    Dir.children(directory).each do |entry|
+      FileUtils.cp_r(File.join(directory, entry), destination)
+    end
+  end
+end
+
+def run_packwerk(directory, command)
+  output, status = Open3.capture2e(
+    { "BUNDLE_GEMFILE" => GEMFILE },
+    RbConfig.ruby, PACKWERK, command,
+    chdir: directory
+  )
+  [ output.gsub(ANSI, ""), status ]
+end
+
+def run_case(test_case)
+  Dir.mktmpdir("packwerk-canary") do |directory|
+    copy_fixture(test_case.fixture, directory)
+    run_packwerk(directory, test_case.command)
+  end
+end
+
+def rule_suffix(test_case)
+  test_case.rule ? " (#{test_case.rule})" : ""
+end
+
+def check_failing_case(test_case, output, status)
+  if status.success?
+    return "passed but must fail", output
+  end
+
+  unless test_case.violation && output.include?(test_case.violation)
+    return "failed without naming #{test_case.violation.inspect}", output
+  end
+
+  unexpected = (VIOLATIONS - [ test_case.violation ]).select { |violation| output.include?(violation) }
+  return "also reported #{unexpected.join(", ")}", output if unexpected.any?
+
+  nil
+end
+
+failures = 0
+
+CASES.each do |test_case|
+  output, status = run_case(test_case)
+  prefix = "packwerk_canary: #{test_case.label}#{rule_suffix(test_case)}"
+
+  if test_case.must_fail
+    problem, detail = check_failing_case(test_case, output, status)
+
+    if problem
+      failures += 1
+      warn "#{prefix} #{problem}"
+      warn detail
+    else
+      puts "ok: #{test_case.label}#{rule_suffix(test_case)} fails #{test_case.command} " \
+           "with #{test_case.violation.inspect}"
+    end
+  elsif status.success?
+    puts "ok: #{test_case.label} passes #{test_case.command}"
+  else
+    failures += 1
+    warn "#{prefix} failed but must pass"
+    warn output
+  end
+end
+
+if failures.positive?
+  warn "packwerk_canary: checked #{CASES.length} cases; unexpected results=#{failures}"
+  exit 1
+end
+
+puts "packwerk_canary: checked #{CASES.length} cases; unexpected results=0"

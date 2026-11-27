@@ -244,6 +244,12 @@ jobs:
       - name: Packwerk recorded violations
         run: script/ci/package_todo_check
 
+      - name: Packwerk recorded violations canary
+        run: script/ci/package_todo_check --canary
+
+      - name: Packwerk canary
+        run: script/ci/packwerk_canary
+
       - name: OpenCode policy check
         run: script/ci/opencode_policy_check
 
