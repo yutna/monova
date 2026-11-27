@@ -27,6 +27,9 @@ repo_path() {
     /*) ;;
     *) p="$PWD/$p" ;;
   esac
+  # Fold `..` and `.` without resolving symlinks, so `/tmp/../repo/app`
+  # still counts as a repository path.
+  p="$(realpath -m -s -- "$p" 2>/dev/null || printf '%s' "$p")"
   case "$p" in
     "$worktrees"/*) p="${p#"$worktrees"/}"; p="${p#*/}" ;;
     "$root"/*) p="${p#"$root"/}" ;;
@@ -46,6 +49,22 @@ allowed_path() {
   esac
 }
 
+# True when a shell word names an implementation path inside the
+# repository or an implementation worktree. A path outside both, such as a
+# temporary directory, is never an implementation path.
+impl_word() {
+  local w="$1"
+  w="${w#[\"\']}"; w="${w%[\"\']}"
+  case "$w" in -*=*) w="${w#*=}" ;; esac
+  [ -z "$w" ] && return 1
+  # A bare top-level directory, as in `cp x lib`, is a target too.
+  case "$w" in
+    app | engines | config | db | lib | spec | test | bin | script | public | vendor) w="$w/" ;;
+  esac
+  grep -Eq "$impl" <<<" $w" || return 1
+  [ -n "$(repo_path "$w")" ]
+}
+
 case "$tool" in
   Edit | Write | MultiEdit | NotebookEdit)
     file="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input")"
@@ -61,7 +80,7 @@ case "$tool" in
     targets="$(grep -Eo '>>?[[:space:]]*[^&[:space:];|)]+' <<<"$cmd" | sed -E 's/^>>?[[:space:]]*//' || true)"
     while IFS= read -r target; do
       [ -z "$target" ] && continue
-      if grep -Eq "$impl" <<<" $target"; then
+      if impl_word "$target"; then
         block "this shell command redirects into an implementation path"
       fi
     done <<<"$targets"
@@ -69,10 +88,25 @@ case "$tool" in
     write='([[:space:]]tee[[:space:]]|sed[[:space:]]+-i|perl[[:space:]]+-[a-z]*i|[[:space:]]truncate[[:space:]]|(^|[;&|[:space:]])(cp|mv|rm|install|patch|ln)[[:space:]]|git[[:space:]]+apply|git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]|[^-]))'
     # Checked per simple command, so `cp a /tmp/b && bin/ci` is not a write
     # to bin/. The split ignores quoting; it errs towards blocking.
+    # `cp`, `install` and `ln` write only their last argument (unless a
+    # target directory is given with -t); their sources are only read.
     while IFS= read -r segment; do
-      if grep -Eq "$write" <<<" $segment" && grep -Eq "$impl" <<<" $segment"; then
-        block "this shell command writes to an implementation path"
-      fi
+      grep -Eq "$write" <<<" $segment" || continue
+      read -ra words <<<"$segment"
+      [ "${#words[@]}" -eq 0 ] && continue
+      candidates=("${words[@]}")
+      case "${words[0]}" in
+        cp | install | ln)
+          only_last=1
+          for w in "${words[@]:1}"; do
+            case "$w" in --target-directory* | -t* | -[!-]*t*) only_last=0 ;; esac
+          done
+          if [ "$only_last" -eq 1 ]; then candidates=("${words[-1]}"); fi
+          ;;
+      esac
+      for w in "${candidates[@]}"; do
+        impl_word "$w" && block "this shell command writes to an implementation path"
+      done
     done < <(sed -E 's/(&&|\|\||;|\|)/\n/g' <<<"$cmd")
     if grep -Eq '(^|[;&|[:space:]])((bin/)?rails|bundle exec rails)[[:space:]]+(g|generate|destroy)[[:space:]]|bundle[[:space:]]+(add|update|remove)|npm[[:space:]]+(install|i|uninstall)[[:space:]]+[^-]' <<<"$cmd"; then
       block "generators and dependency changes are implementation work"
