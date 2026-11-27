@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # A weekly rebuild catches a base image or upstream package that rots.
+    - cron: "0 3 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -18,6 +21,74 @@ env:
   BUNDLE_FROZEN: "true"
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      devcontainer: ${{ steps.pin.outputs.changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect a changed pin file
+        id: pin
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A schedule or a manual run always proves the container, and a push
+          # without a usable base (a new branch, after a force push) does too.
+          if [ "${EVENT_NAME}" = "schedule" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # OPS-01 pin files. The check exits 1 when any of them differs.
+          if git diff --quiet "${BASE_SHA}" "${GITHUB_SHA}" -- \
+            mise.toml Gemfile.lock package-lock.json .devcontainer Dockerfile \
+            .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  devcontainer:
+    needs: changes
+    if: needs.changes.outputs.devcontainer == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The Dev Container runs as vscode (UID 1000), while the GitHub runner
+      # checks the workspace out as another user, so give the bind mount to the
+      # container user before anything writes to it.
+      - name: Own the workspace as the container user
+        run: sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+
+      - name: Build the Dev Container
+        run: docker compose -f .devcontainer/compose.yaml build app
+
+      - name: Start the Dev Container
+        run: docker compose -f .devcontainer/compose.yaml up --detach
+
+      # The image installs the toolchains from mise.toml; the Dev Container's
+      # postCreateCommand installs the gems and prepares the databases, so the
+      # job runs the same command before the gate (OPS-01).
+      - name: Prepare the Dev Container
+        run: docker compose -f .devcontainer/compose.yaml exec -T app bin/setup --skip-server
+
+      - name: Run bin/ci in the Dev Container
+        run: docker compose -f .devcontainer/compose.yaml exec -T app bin/ci
+
   actionlint:
     runs-on: ubuntu-latest
     steps:
@@ -194,7 +265,10 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [actionlint, scan_ruby, lint, test, markdown, guards, loop]
+    # A devcontainer job skipped because no pin file changed is not a failure.
+    # The check below fails only on a job that failed or was cancelled, so a
+    # skipped devcontainer counts as passing (WF-02).
+    needs: [changes, devcontainer, actionlint, scan_ruby, lint, test, markdown, guards, loop]
     runs-on: ubuntu-latest
     steps:
       - name: All required jobs passed
