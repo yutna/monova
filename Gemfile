@@ -16,6 +16,13 @@ gem "solid_cable", "4.1.0"
 # Deployment: release this application as a Docker container.
 gem "kamal", "2.12.0", require: false
 
+# Engines: every engine is a gem without its own release, loaded through one
+# glob so a new engine does not edit this file (ARCH-01).
+Dir[File.expand_path("engines/*/*.gemspec", __dir__)].sort.each do |gemspec|
+  engine = Gem::Specification.load(gemspec)
+  gem engine.name, path: File.dirname(gemspec), require: engine.name.sub("_", "/")
+end
+
 group :development, :test do
   # Development and test: the debugger, the security scans, the style linter
   # and the spec runner (TS-02).
@@ -31,4 +38,6 @@ end
 group :test do
   # Test: the guard that blocks real HTTP (TS-02, ADR-24).
   gem "webmock", "3.40.0"
+  # Test: factories an engine keeps beside its specs (TS-02, TS-03).
+  gem "factory_bot_rails", "6.5.1"
 end

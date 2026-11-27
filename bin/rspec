@@ -2,7 +2,18 @@
 # frozen_string_literal: true
 
 # Run the RSpec suite. `bin/ci` prepares the test database before calling this
-# script.
+# script. With no file or directory argument, run the root specs and every
+# engine's specs.
 require "bundler/setup"
+
+# A spec argument may end with a location suffix, `:12` or `[1:2]`.
+def spec_path?(argument)
+  return false if argument.start_with?("-")
+
+  path = argument.sub(/\[[^\]]+\]\z/, "").sub(/:\d+(?::\d+)*\z/, "")
+  File.exist?(path)
+end
+
+ARGV.concat(["spec", *Dir["engines/*/spec"].sort]) unless ARGV.any? { |argument| spec_path?(argument) }
 
 load Gem.bin_path("rspec-core", "rspec")
