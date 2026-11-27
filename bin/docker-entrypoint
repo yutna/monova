@@ -1,7 +1,9 @@
 #!/bin/bash -e
 
-# If running the rails server then create or migrate existing database
-if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
+# If running the rails server then create or migrate existing database.
+# A one-element `${*: n:1}` slice keeps ShellCheck happy: it rejects `$@`
+# slices in `[ ]` (SC2198), and the single element is the same word.
+if [ "${*: -2:1}" == "./bin/rails" ] && [ "${*: -1:1}" == "server" ]; then
   ./bin/rails db:prepare
 fi
 
