@@ -108,8 +108,11 @@ jobs:
         with:
           bundler-cache: true
 
-      - name: Run tests
-        run: bin/rails db:test:prepare test
+      - name: "Tests: RSpec"
+        run: bin/rails db:test:prepare && bin/rspec
+
+      - name: "Tests: Seeds"
+        run: env RAILS_ENV=test bin/rails db:seed:replant
 
   markdown:
     runs-on: ubuntu-latest
