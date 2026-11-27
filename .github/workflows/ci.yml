@@ -84,10 +84,10 @@ jobs:
       # postCreateCommand installs the gems and prepares the databases, so the
       # job runs the same command before the gate (OPS-01).
       - name: Prepare the Dev Container
-        run: docker compose -f .devcontainer/compose.yaml exec -T app bin/setup --skip-server
+        run: docker compose -f .devcontainer/compose.yaml exec -T -e BUNDLE_FROZEN=true app bin/setup --skip-server
 
       - name: Run bin/ci in the Dev Container
-        run: docker compose -f .devcontainer/compose.yaml exec -T app bin/ci
+        run: docker compose -f .devcontainer/compose.yaml exec -T -e BUNDLE_FROZEN=true app bin/ci
 
   actionlint:
     runs-on: ubuntu-latest
