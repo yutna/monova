@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # Proves that script/docs/check fails for every failure case and passes on
-# a clean fixture root. Run by bin/ci and by GitHub CI.
+# the clean fixture roots. Run by bin/ci and by GitHub CI.
 
 require "open3"
 require "rbconfig"
@@ -26,6 +26,9 @@ CASES = [
       "docs/development/protocol.md:3: AUTH-04 is cited but not defined" ] ],
   [ "file-budget", false, [ "01_architecture.md has 401 lines, budget is 400" ] ],
   [ "total-budget", false, [ "docs/architecture has 4501 lines, budget is 4500" ] ],
+  [ "total-budget-lessons-learned", true,
+    [ "docs_check: checked 12 files, 0 rule IDs and 0 ADRs (4400 lines)", "docs_check: OK" ] ],
+  [ "lessons-learned-file-budget", false, [ "lessons-learned.md has 401 lines, budget is 400" ] ],
   [ "empty", false, [ "no Markdown files" ] ]
 ].freeze
 

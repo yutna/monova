@@ -19,6 +19,8 @@ SUPERSEDED = /\ASuperseded\b(?:\s+by\s+(ADR-\d{2}))?/
 DEFAULT_BUDGET = 400
 FILE_BUDGETS = { "12_enforcement.md" => 600, "13_decisions.md" => 600 }.freeze
 TOTAL_BUDGET = 4_500
+# A log, not specification, so its lines do not count toward the total.
+TOTAL_EXCLUDED = %w[lessons-learned.md].freeze
 
 # One checked file: its root-relative name and its lines.
 FileLines = Struct.new(:path, :name, :lines, keyword_init: true)
@@ -95,7 +97,8 @@ end
 def line_budget_errors(root)
   errors = []
   files = read_files(root, architecture_files(root))
-  total = files.sum { |file| file.lines.length }
+  total = files.reject { |file| TOTAL_EXCLUDED.include?(File.basename(file.path)) }
+               .sum { |file| file.lines.length }
 
   files.each do |file|
     budget = FILE_BUDGETS.fetch(File.basename(file.path), DEFAULT_BUDGET)
