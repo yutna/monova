@@ -111,26 +111,25 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 - v0.8.0 (AUTH and DATA on top of core) is open. Merged so far: #158
   (Packwerk's singular file count, #165), #161 (strong_migrations and
   its canary, #167) and #166 (the finding admission rule in protocol
-  §7, #168) and #162 (core's base record, table defaults and
-  `core_tenants`, #169). Open, in order: #163 (the per-transaction
-  tenancy helper) is with the implementer, draft PR #171; #164 (the
-  tenant policy helper, `TenantOwned` and the DATA-03 catalog check)
-  waits for it.
+  §7, #168), #162 (core's base record, table defaults and
+  `core_tenants`, #169) and #163 (the per-transaction tenancy helper,
+  #171). Open: #164 (the tenant policy helper, `TenantOwned` and the
+  DATA-03 catalog check) is with the implementer, draft PR #173. It is
+  the last open v0.8.0 issue.
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review PR #171 (#163) once its implementer run has ended, and merge
+1. Review PR #173 (#164) once its implementer run has ended, and merge
    it.
-2. Dispatch #164 once #163 is closed.
+2. Plan v0.9.0 from the specification (v0.8.0 is under way); never plan
+   further ahead.
 3. When every v0.8.0 issue is closed, run the gate with a fresh
    subagent that applies the finding admission rule; when it passes,
    bump `VERSION` to 0.8.0 through an implementer issue and close the
    milestone.
-4. Plan v0.9.0 from the specification once v0.8.0 is under way; never
-   plan further ahead.
 
 ## After the major release
 
