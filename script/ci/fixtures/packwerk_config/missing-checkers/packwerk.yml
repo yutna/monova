@@ -1,0 +1,7 @@
+require: []
+
+layers:
+  - root
+  - product
+  - domain
+  - kernel

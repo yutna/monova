@@ -15,6 +15,8 @@ CI.run do
   step "Guards: Packwerk recorded violations", "script/ci/package_todo_check"
   step "Guards: Packwerk recorded violations canary", "script/ci/package_todo_check --canary"
   step "Guards: Packwerk canary", "script/ci/packwerk_canary"
+  step "Guards: Packwerk configuration", "script/ci/packwerk_config_check"
+  step "Guards: Packwerk configuration canary", "script/ci/packwerk_config_check --canary"
 
   step "Guards: Lead guard canary", "script/ci/lead_guard_canary"
   step "Guards: OpenCode policy", "script/ci/opencode_policy_check"

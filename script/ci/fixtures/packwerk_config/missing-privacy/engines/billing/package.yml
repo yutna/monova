@@ -1,0 +1,5 @@
+enforce_dependencies: strict
+enforce_layers: true
+layer: product
+dependencies:
+  - engines/core

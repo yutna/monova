@@ -1,0 +1,211 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# ARCH-02: the layer checker is required and layers run from highest to
+# lowest. ARCH-04: every package sets enforce_dependencies: strict.
+# ARCH-06: every engine sets enforce_privacy: strict and the privacy
+# checker is required. The check reads the repository's own files, fails on
+# an empty set of engine packages, and names the rule it protects. The
+# --canary mode proves the clean fixture passes and every broken fixture
+# fails with its rule ID (TS-07); temporary copies are removed on exit.
+
+require "fileutils"
+require "open3"
+require "optparse"
+require "rbconfig"
+require "tmpdir"
+require "yaml"
+
+ROOT = File.expand_path("../..", __dir__)
+FIXTURES = File.expand_path("fixtures/packwerk_config", __dir__)
+PACKWERK = "packwerk.yml"
+ROOT_PACKAGE = "package.yml"
+ENGINE_PACKAGES = File.join("engines", "*", "package.yml")
+CHECKERS = {
+  "ARCH-06" => "packwerk/privacy/checker",
+  "ARCH-02" => "packwerk/layer/checker"
+}.freeze
+LAYERS = %w[root product domain kernel].freeze
+STRICT = "strict"
+
+# fixture: the directory under FIXTURES to copy and run the check against.
+# rules: the rule IDs the failing output must name; empty means it must pass.
+Case = Struct.new(:fixture, :rules, keyword_init: true)
+
+CASES = [
+  Case.new(fixture: "clean", rules: []),
+  Case.new(fixture: "missing-checkers", rules: %w[ARCH-02 ARCH-06]),
+  Case.new(fixture: "wrong-layers", rules: %w[ARCH-02]),
+  Case.new(fixture: "weak-package", rules: %w[ARCH-02 ARCH-04]),
+  Case.new(fixture: "missing-privacy", rules: %w[ARCH-06]),
+  Case.new(fixture: "no-engine-packages", rules: %w[ARCH-04])
+].freeze
+
+def fail_canary(message)
+  warn "packwerk_config_check --canary: #{message}"
+  exit 1
+end
+
+def load_yaml(path, name, rule, errors)
+  data = YAML.safe_load_file(path)
+  return data if data.is_a?(Hash)
+
+  errors << "#{rule}: #{name} must be a YAML mapping"
+  nil
+rescue Errno::ENOENT
+  errors << "#{rule}: #{name} is missing"
+  nil
+rescue Psych::Exception => error
+  errors << "#{rule}: cannot parse #{name}: #{error.message}"
+  nil
+end
+
+def configuration_errors(config)
+  errors = []
+  required = Array(config["require"])
+
+  CHECKERS.each do |rule, checker|
+    next if required.include?(checker)
+
+    errors << "#{rule}: #{PACKWERK} must require #{checker}"
+  end
+
+  layers = config["layers"]
+  unless layers == LAYERS
+    found = layers.nil? ? "none" : layers.inspect
+    errors << "ARCH-02: #{PACKWERK} layers must be #{LAYERS.join(", ")} (found #{found})"
+  end
+
+  errors
+end
+
+def package_errors(name, package)
+  errors = []
+
+  unless package["enforce_dependencies"] == STRICT
+    errors << "ARCH-04: #{name} must set enforce_dependencies: strict"
+  end
+
+  unless package["enforce_layers"] == true
+    errors << "ARCH-02: #{name} must set enforce_layers: true"
+  end
+
+  return errors if LAYERS.include?(package["layer"])
+
+  found = package["layer"].nil? ? "none" : package["layer"].inspect
+  errors << "ARCH-02: #{name} must set layer to one of #{LAYERS.join(", ")} (found #{found})"
+  errors
+end
+
+def privacy_errors(name, package)
+  return [] if package["enforce_privacy"] == STRICT
+
+  [ "ARCH-06: #{name} must set enforce_privacy: strict" ]
+end
+
+def check(root)
+  errors = []
+  config = load_yaml(File.join(root, PACKWERK), PACKWERK, "ARCH-02", errors) || {}
+  root_package = load_yaml(File.join(root, ROOT_PACKAGE), ROOT_PACKAGE, "ARCH-04", errors)
+  engine_paths = Dir[File.join(root, ENGINE_PACKAGES)].sort
+
+  errors << "ARCH-04: no engine package.yml found under engines/" if engine_paths.empty?
+
+  engine_packages = engine_paths.filter_map do |path|
+    name = path.delete_prefix("#{root}/")
+    package = load_yaml(path, name, "ARCH-04", errors)
+    [ name, package ] if package
+  end
+
+  errors.concat(configuration_errors(config))
+  errors.concat(package_errors(ROOT_PACKAGE, root_package)) if root_package
+
+  engine_packages.each do |name, package|
+    errors.concat(package_errors(name, package))
+    errors.concat(privacy_errors(name, package))
+  end
+
+  checked = engine_paths.length
+  checked += 1 if File.file?(File.join(root, ROOT_PACKAGE))
+
+  if errors.empty?
+    puts "packwerk_config_check: checked #{checked} package files"
+    puts "packwerk_config_check: OK"
+    return 0
+  end
+
+  errors.each { |error| warn "packwerk_config_check: #{error}" }
+  warn "packwerk_config_check: checked #{checked} package files; failures=#{errors.length}"
+  1
+end
+
+def copy_fixture(fixture, destination)
+  source = File.join(FIXTURES, fixture)
+  fail_canary("fixture #{fixture} is missing") unless Dir.exist?(source)
+
+  Dir.children(source).each do |entry|
+    FileUtils.cp_r(File.join(source, entry), destination)
+  end
+end
+
+def run_check(root)
+  Open3.capture2e(RbConfig.ruby, File.expand_path(__FILE__), "--root", root)
+end
+
+def canary_problem(test_case, output, status)
+  if test_case.rules.empty?
+    return "failed but must pass" unless status.success?
+    return "passed without the checked count and OK" unless output.include?("package files") && output.include?("OK")
+
+    return nil
+  end
+
+  return "passed but must fail" if status.success?
+
+  missing = test_case.rules.reject { |rule| output.include?(rule) }
+  return "did not name #{missing.join(", ")}" if missing.any?
+
+  nil
+end
+
+def canary
+  fail_canary("no fixtures in #{FIXTURES}") unless Dir.exist?(FIXTURES)
+
+  failures = 0
+
+  CASES.each do |test_case|
+    # The block form of Dir.mktmpdir removes the copy even when a case fails.
+    Dir.mktmpdir("packwerk-config-canary") do |directory|
+      copy_fixture(test_case.fixture, directory)
+      output, status = run_check(directory)
+      problem = canary_problem(test_case, output, status)
+
+      if problem
+        failures += 1
+        warn "packwerk_config_check --canary: #{test_case.fixture} #{problem}"
+        warn output
+      elsif test_case.rules.empty?
+        puts "ok: #{test_case.fixture} passes"
+      else
+        puts "ok: #{test_case.fixture} fails (#{test_case.rules.join(", ")})"
+      end
+    end
+  end
+
+  if failures.positive?
+    warn "packwerk_config_check --canary: checked #{CASES.length} fixtures; failures=#{failures}"
+    return 1
+  end
+
+  puts "packwerk_config_check --canary: checked #{CASES.length} fixtures; failures=0"
+  0
+end
+
+options = { root: ROOT, canary: false }
+OptionParser.new do |parser|
+  parser.banner = "Usage: packwerk_config_check [--root DIR] [--canary]"
+  parser.on("--root DIR", "Repository root to check") { |value| options[:root] = File.expand_path(value) }
+  parser.on("--canary", "Prove every fixture passes or fails as expected") { options[:canary] = true }
+end.parse!
+
+exit(options[:canary] ? canary : check(options[:root]))

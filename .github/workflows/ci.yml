@@ -250,6 +250,12 @@ jobs:
       - name: Packwerk canary
         run: script/ci/packwerk_canary
 
+      - name: Packwerk configuration
+        run: script/ci/packwerk_config_check
+
+      - name: Packwerk configuration canary
+        run: script/ci/packwerk_config_check --canary
+
       - name: OpenCode policy check
         run: script/ci/opencode_policy_check
 
