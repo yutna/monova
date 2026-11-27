@@ -47,6 +47,10 @@ Every database role and what it may do:
   tenant's rows. `acme_backup` has it because `pg_dump` turns
   `row_security` off and fails for a role the policies bind
   (OPS-08). These are the only two (AUTH-12).
+- `acme_migrator` has `CREATEDB` because it runs `db:create` and
+  `db:test:prepare` in development, test and CI. It is the only role
+  with it. A production deploy MAY drop `CREATEDB`, since the database
+  exists before the first deploy.
 - The application holds only the `acme_app` credentials. The release
   step that runs migrations gets the migrator credentials; no web or
   job process ever has them (OPS-07).
