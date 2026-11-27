@@ -1,0 +1,12 @@
+require:
+  - packwerk/privacy/checker
+  - packwerk/layer/checker
+
+layers:
+  - root
+  - product
+  - domain
+  - kernel
+
+include:
+  - "engines/*/app/**/*.{rb,rake,erb}"

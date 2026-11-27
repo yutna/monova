@@ -1,0 +1,7 @@
+# A recorded violation must never be committed (ARCH-05).
+engines/core:
+  "::Needed::Thing":
+    violations:
+      - dependency
+    files:
+      - engines/core/app/models/core/caller.rb
