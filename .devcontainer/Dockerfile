@@ -13,19 +13,19 @@ ARG DEBIAN_FRONTEND=noninteractive
 # client that loads db/structure.sql, and the tools mise and git need.
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
-      autoconf bison build-essential ca-certificates curl git \
+      autoconf bison build-essential ca-certificates curl git jq \
       libffi-dev libgdbm-dev libncurses-dev libpq-dev libreadline-dev \
       libssl-dev libvips libyaml-dev patch pkg-config postgresql-client \
-      sudo unzip zlib1g-dev && \
+      sudo tzdata unzip zlib1g-dev && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# The non-root user the Dev Container connects as.
+# The non-root user the Dev Container connects as. Ubuntu 24.04 ships an
+# `ubuntu` user with UID and GID 1000, so rename it instead of creating a
+# second 1000 to keep ownership of the bind mount.
 ARG USERNAME=vscode
-ARG USER_UID=1000
-ARG USER_GID=1000
-RUN groupadd --gid "${USER_GID}" "${USERNAME}" && \
-    useradd --uid "${USER_UID}" --gid "${USER_GID}" \
-      --create-home --shell /bin/bash "${USERNAME}" && \
+RUN groupmod --new-name "${USERNAME}" ubuntu && \
+    usermod --login "${USERNAME}" --home "/home/${USERNAME}" \
+      --move-home --shell /bin/bash ubuntu && \
     echo "${USERNAME} ALL=(root) NOPASSWD:ALL" \
       > "/etc/sudoers.d/${USERNAME}" && \
     chmod 0440 "/etc/sudoers.d/${USERNAME}"
@@ -34,7 +34,9 @@ USER ${USERNAME}
 
 # mise installs the toolchains from mise.toml. The trusted path covers the
 # bind mount the Dev Container uses at run time.
-ENV PATH="/home/${USERNAME}/.local/bin:/home/${USERNAME}/.local/share/mise/shims:${PATH}" \
+ENV LANG="C.UTF-8" \
+    LC_ALL="C.UTF-8" \
+    PATH="/home/${USERNAME}/.local/bin:/home/${USERNAME}/.local/share/mise/shims:${PATH}" \
     MISE_TRUSTED_CONFIG_PATHS="/workspaces/monova"
 
 RUN curl --proto '=https' --tlsv1.2 -fsSL https://mise.run | \
