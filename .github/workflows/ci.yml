@@ -239,16 +239,16 @@ jobs:
         run: bin/packwerk validate
 
       - name: Packwerk dependencies
-        run: bin/packwerk check
+        run: script/ci/packwerk_check
+
+      - name: Packwerk canary
+        run: script/ci/packwerk_canary
 
       - name: Packwerk recorded violations
         run: script/ci/package_todo_check
 
       - name: Packwerk recorded violations canary
         run: script/ci/package_todo_check --canary
-
-      - name: Packwerk canary
-        run: script/ci/packwerk_canary
 
       - name: Packwerk configuration
         run: script/ci/packwerk_config_check

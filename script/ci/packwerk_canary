@@ -3,8 +3,9 @@
 
 # TS-07: every Packwerk guard has a canary. Each case copies the shared
 # fixture root to a temporary directory, adds the case's packages and runs
-# bin/packwerk there. The directory is removed on exit, including when a
-# case fails.
+# the check there: the check cases go through script/ci/packwerk_check, so a
+# wrong include: glob fails on its empty input set. The directory is removed
+# on exit, including when a case fails.
 #
 # ARCH-02: a lower layer may not depend on a higher one (layer checker).
 # ARCH-04: every dependency is declared and the graph has no cycle.
@@ -18,6 +19,7 @@ require "tmpdir"
 ROOT = File.expand_path("../..", __dir__)
 FIXTURES = File.expand_path("fixtures/packwerk", __dir__)
 PACKWERK = File.join(ROOT, "bin", "packwerk")
+PACKWERK_CHECK = File.expand_path("packwerk_check", __dir__)
 GEMFILE = File.join(ROOT, "Gemfile")
 ANSI = /\e\[[0-9;]*m/
 VIOLATIONS = [ "Dependency violation", "Privacy violation", "Layer violation" ].freeze
@@ -30,6 +32,8 @@ Case = Struct.new(:fixture, :label, :rule, :command, :violation, :must_fail, key
 CASES = [
   Case.new(fixture: "clean", label: "clean check", rule: nil, command: "check", violation: nil, must_fail: false),
   Case.new(fixture: "clean", label: "clean validate", rule: nil, command: "validate", violation: nil, must_fail: false),
+  Case.new(fixture: "empty-include", label: "empty include", rule: "ARCH-04", command: "check",
+    violation: "ARCH-04: Packwerk inspected 0 files", must_fail: true),
   Case.new(fixture: "dependency", label: "dependency", rule: "ARCH-04", command: "check",
     violation: "Dependency violation", must_fail: true),
   Case.new(fixture: "privacy", label: "privacy", rule: "ARCH-06", command: "check",
@@ -56,10 +60,18 @@ def copy_fixture(fixture, destination)
   end
 end
 
+# The check cases run through the guard, so a wrong include: glob fails on
+# its empty input set instead of checking nothing.
+def packwerk_command(directory, command)
+  return [ RbConfig.ruby, PACKWERK, command ] unless command == "check"
+
+  [ RbConfig.ruby, PACKWERK_CHECK, "--root", directory ]
+end
+
 def run_packwerk(directory, command)
   output, status = Open3.capture2e(
     { "BUNDLE_GEMFILE" => GEMFILE },
-    RbConfig.ruby, PACKWERK, command,
+    *packwerk_command(directory, command),
     chdir: directory
   )
   [ output.gsub(ANSI, ""), status ]

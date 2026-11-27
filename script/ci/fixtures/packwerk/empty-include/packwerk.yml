@@ -1,0 +1,13 @@
+require:
+  - packwerk/privacy/checker
+  - packwerk/layer/checker
+
+layers:
+  - root
+  - product
+  - domain
+  - kernel
+
+# TS-07: an include glob that matches no file must fail the guard.
+include:
+  - "engines/*/app/**/*.rb-disabled"

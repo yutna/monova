@@ -11,10 +11,10 @@ CI.run do
   step "Guards: PostgreSQL image canary", "script/ci/postgres_image_check --canary"
 
   step "Guards: Packwerk package graph", "bin/packwerk validate"
-  step "Guards: Packwerk dependencies", "bin/packwerk check"
+  step "Guards: Packwerk dependencies", "script/ci/packwerk_check"
+  step "Guards: Packwerk canary", "script/ci/packwerk_canary"
   step "Guards: Packwerk recorded violations", "script/ci/package_todo_check"
   step "Guards: Packwerk recorded violations canary", "script/ci/package_todo_check --canary"
-  step "Guards: Packwerk canary", "script/ci/packwerk_canary"
   step "Guards: Packwerk configuration", "script/ci/packwerk_config_check"
   step "Guards: Packwerk configuration canary", "script/ci/packwerk_config_check --canary"
 
