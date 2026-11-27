@@ -107,24 +107,20 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 - v0.3.0 and v0.4.0 are gated, released and closed (v0.4.0 on
   2026-11-27; `VERSION` is 0.4.0). The specification files exist.
-- v0.5.0 is planned and in progress: #103 is merged (#113). #89 (drop
-  `image_processing`, PR #112) is with the implementer.
-- v0.5.0 dependency chain: #89 → #102 → #105; #101 and #105 → #106 →
-  #107 → #108 → #109 and #110. #104 and #111 are ready now. Lead issue
-  #95 (gate findings 5 and 9 in the spec) waits for #101, #102, #104
-  and #106.
+- v0.5.0 is in progress. Closed: #89, #95, #101 to #107. #108 (Dev
+  Container, draft PR #122) is with the implementer. Open after it:
+  #109 and #110 (both depend on #108) and #111 (ready; its dependency
+  #103 is closed).
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review PR #112 (#89), then dispatch the v0.5.0 issues in the order
-   of the chain above.
-2. Do #95 once its dependencies are closed.
-3. Plan v0.6.0 when v0.5.0 is nearly done, from the specification
+1. Review PR #122 (#108), then dispatch #111, #109 and #110.
+2. Plan v0.6.0 when v0.5.0 is nearly done, from the specification
    (for example tokens and tenancy, AUTH and DATA), never further ahead.
-4. Gate and release v0.5.0.
+3. Gate and release v0.5.0.
 
 ## After the major release
 
