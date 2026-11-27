@@ -103,6 +103,11 @@ lead reviews it as one and says so in the review.
   big issue is rewritten or split. A clear issue gets a different way of
   working: a fresh session, one item at a time, or a failing check that
   shows the defect. Record the diagnosis in `lessons-learned.md`.
+- The two-round limit counts rounds inside one pull request. The
+  redesign trigger in §7 counts findings on one component across pull
+  requests and gates. Each limit applies on its own.
+- A review finding outside the issue's criteria follows the admission
+  rule in §7 before it becomes a new issue.
 
 ## 7. Milestone gate and release
 
@@ -111,14 +116,71 @@ When every issue in a milestone is closed:
 1. A fresh Claude run with no lead context audits the milestone: the
    issues' criteria against `main`, the rules the milestone touched, the
    enforcement claims (a rule marked enforced has a CI tool and a canary),
-   and `bin/ci` on a clean checkout.
-2. Blocking findings become issues in the same milestone, and the loop
-   continues. Other findings go to the next milestone.
+   and `bin/ci` on a clean checkout. It applies the finding admission
+   rule below to everything it reports.
+2. Blocking findings (S1 and S2) become issues in the same milestone,
+   and the loop continues. S3 findings go to the next milestone or to
+   `Backlog`.
    An issue closed as not planned (a duplicate or a dropped item) counts
    as closed, provided a comment on it links the issue or pull request
    that covers it, or says why it was dropped.
 3. When the gate passes, the lead updates `VERSION` through a pull
    request and closes the milestone, which publishes the release.
+
+### Finding admission
+
+A gate converges only when it files findings that someone will hit.
+Quality here means no failure that a real user meets, weighted by harm;
+it does not mean no findings. These rules decide what a finding is and
+how much it counts.
+
+- **Failure scenario.** Every finding names four things: the actor, the
+  input or action, the wrong result, and who is hurt (an adopter's API
+  in production, an adopter's developer or AI agent, or this
+  repository's CI). A finding with no reachable scenario is a note in the
+  gate report, not an issue.
+- **Threat model per surface.**
+  - Runtime code that ships in an adopter's API (the AUTH, DATA, SEC and
+    API rules: tenancy and RLS, tokens and scopes, BOLA, input handling)
+    keeps the full adversarial model: an attacker sends any input.
+  - Tooling (`bin/ci`, `script/`, canaries, generators, the OpenCode
+    policies and the `lead_guard` hook) guards against honest mistakes
+    and shortcuts by a developer or an AI agent: ordinary syntax,
+    ordinary encodings, the tool's documented configuration. An input
+    built only to slip past a guard (escapes, odd whitespace or
+    delimiters, Unicode tricks) is S3 at most, unless a rule in
+    `08_security.md` names that evasion.
+- **Severity follows impact.**
+  - S1: a security hole or data loss in an adopter's production API (a
+    cross-tenant read or write, a token or secret leak, a bypassed
+    policy), or a guard that lets a rule violation merge unnoticed in
+    normal use.
+  - S2: a MUST rule not met in a way an adopter or their agent meets in
+    normal use, or a guard that wrongly blocks valid work.
+  - S3: everything else: hardening, wording, and inputs that only a
+    deliberate attempt would produce against tooling.
+- **No silent downgrade.** A filed S1 or S2 keeps its severity unless a
+  comment on its issue states the failure scenario that justifies the
+  lower one.
+- **Fix the class.** A finding about input handling names its input
+  class. The fix covers the class, with a canary per class, not only the
+  reported string.
+- **Replace hand-written parsers.** When a hand-written parser or
+  matcher (shell text matching, a regular expression over a file format)
+  draws a second finding of the same class, the next pull request
+  replaces it with the tool's own parser or output format, an AST, or a
+  library already in the stack.
+- **Redesign after three rounds.** When one component draws findings in
+  three consecutive fix rounds, or in two gates in a row, stop patching:
+  the next pull request redesigns it from its rule, and the gate report
+  says why.
+- **Count per component.** The gate report lists the number of findings
+  per component, so a loop is visible across gates.
+
+These rules are the template's own process, like the rest of this
+protocol, so they live here and not in the specification: an adopted
+copy keeps the specification but not this process (ADR-01, ADR-10 to
+ADR-14).
 
 ## 8. Owner decisions
 

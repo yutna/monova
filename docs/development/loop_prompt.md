@@ -51,9 +51,10 @@ the lowest one in scope. A milestone with no issues is never complete.
 5. **Milestone complete.** The lowest open version milestone has issues
    and every one is closed: run the gate (protocol §7) with a fresh
    subagent that gets only the milestone name, the protocol and the
-   spec. When it passes, update `VERSION` (a pull request by the
-   implementer: file an issue and dispatch it), then close the
-   milestone.
+   spec, and tell it to apply the finding admission rule in protocol §7
+   to every finding and to list findings per component. When it
+   passes, update `VERSION` (a pull request by the implementer: file an
+   issue and dispatch it), then close the milestone.
 6. **Lead issue.** An open `owner: lead` issue in the lowest milestone
    (specification drafting, control files) whose `Depends on` issues are
    closed: do it in a lead worktree, open a pull request, wait for CI,
