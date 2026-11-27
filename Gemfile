@@ -17,17 +17,18 @@ gem "solid_cable", "4.1.0"
 gem "kamal", "2.12.0", require: false
 
 group :development, :test do
-  # Development and test: the debugger, the security scans and the style linter.
+  # Development and test: the debugger, the security scans, the style linter
+  # and the spec runner (TS-02).
   gem "debug", "1.11.1", platforms: %i[ mri windows ], require: "debug/prelude"
   gem "brakeman", "8.1.1", require: false
   gem "bundler-audit", "0.9.3", require: false
   gem "rubocop-rails-omakase", "1.1.0", require: false
   gem "rubocop-rspec", "3.10.2", require: false
   gem "rubocop-rspec_rails", "2.33.0", require: false
+  gem "rspec-rails", "8.1.0"
 end
 
 group :test do
-  # Test: the suite runner and the guard that blocks real HTTP (TS-02, ADR-24).
-  gem "rspec-rails", "8.1.0"
+  # Test: the guard that blocks real HTTP (TS-02, ADR-24).
   gem "webmock", "3.34.0"
 end

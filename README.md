@@ -90,7 +90,7 @@ production, provide the key as `RAILS_MASTER_KEY`.
 ## Testing
 
 ```sh
-bin/rails test
+bin/rspec
 bin/ci
 ```
 
