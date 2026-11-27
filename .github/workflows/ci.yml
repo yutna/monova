@@ -108,8 +108,11 @@ jobs:
         with:
           bundler-cache: true
 
+      - name: "Database: roles"
+        run: bin/db-roles
+
       - name: "Tests: RSpec"
-        run: bin/rails db:test:prepare && bin/rspec
+        run: bin/rails db:test:prepare && bin/db-roles && bin/rspec
 
       - name: "Tests: Seeds"
         run: env RAILS_ENV=test bin/rails db:seed:replant
