@@ -29,15 +29,43 @@ RULES = [
   [ "push a branch to main", exact_policy("tool.use", "shell:git push * main") ],
   [ "push a refspec to main", exact_policy("tool.use", "shell:git push *:main") ],
   [ "push HEAD to main", exact_policy("tool.use", "shell:git push *HEAD:main*") ],
+  [ "push refs/heads/main", exact_policy("tool.use", "shell:git push *refs/heads/main*") ],
   [ "push --force", exact_policy("tool.use", "shell:git push --force*") ],
   [ "push -f", exact_policy("tool.use", "shell:git push -f*") ],
   [ "push --force with a remote", exact_policy("tool.use", "shell:git push * --force*") ],
   [ "push -f with a remote", exact_policy("tool.use", "shell:git push * -f*") ],
   [ "push --delete", exact_policy("tool.use", "shell:git push * --delete *") ],
   [ "push delete a refspec", exact_policy("tool.use", "shell:git push * :*") ],
+  [ "delete a branch", exact_policy("tool.use", "shell:git branch -D *") ],
+  [ "tag", exact_policy("tool.use", "shell:git tag *") ],
+  [ "git config", exact_policy("tool.use", "shell:git config *") ],
+  [ "git --no-verify", exact_policy("tool.use", "shell:git * --no-verify*") ],
+  [ "git --no-gpg-sign", exact_policy("tool.use", "shell:git * --no-gpg-sign*") ],
   [ "gh pr merge", exact_policy("tool.use", "shell:gh pr merge*") ],
-  [ "gh api", exact_policy("tool.use", "shell:gh api*") ],
+  [ "gh pr close", exact_policy("tool.use", "shell:gh pr close*") ],
+  [ "gh pr review", exact_policy("tool.use", "shell:gh pr review*") ],
+  [ "gh issue close", exact_policy("tool.use", "shell:gh issue close*") ],
+  [ "gh issue delete", exact_policy("tool.use", "shell:gh issue delete*") ],
+  [ "gh issue create", exact_policy("tool.use", "shell:gh issue create*") ],
   [ "gh release", exact_policy("tool.use", "shell:gh release*") ],
+  [ "gh api", exact_policy("tool.use", "shell:gh api*") ],
+  [ "gh label", exact_policy("tool.use", "shell:gh label*") ],
+  [ "gh repo", exact_policy("tool.use", "shell:gh repo*") ],
+  [ "gh secret", exact_policy("tool.use", "shell:gh secret*") ],
+  [ "gh variable", exact_policy("tool.use", "shell:gh variable*") ],
+  [ "gh workflow", exact_policy("tool.use", "shell:gh workflow*") ],
+  [ "gh ruleset", exact_policy("tool.use", "shell:gh ruleset*") ],
+  [ "gh auth", exact_policy("tool.use", "shell:gh auth*") ],
+  [ "sudo", exact_policy("tool.use", "shell:sudo *") ],
+  [ "rm -rf /", exact_policy("tool.use", "shell:rm -rf /*") ],
+  [ "rm -rf ~", exact_policy("tool.use", "shell:rm -rf ~*") ],
+  [ "rm -rf .git", exact_policy("tool.use", "shell:rm -rf .git*") ],
+  [ "curl", exact_policy("tool.use", "shell:curl *") ],
+  [ "wget", exact_policy("tool.use", "shell:wget *") ],
+  [ "opencode", exact_policy("tool.use", "shell:opencode *") ],
+  [ "claude", exact_policy("tool.use", "shell:claude *") ],
+  [ "kamal", exact_policy("tool.use", "shell:kamal *") ],
+  [ "bin/kamal", exact_policy("tool.use", "shell:bin/kamal *") ],
   [ "shell credentials:edit", exact_policy("tool.use", "shell:*credentials:edit*") ],
   [ "shell master.key", exact_policy("tool.use", "shell:*master.key*") ],
   [ "shell credentials/*.key", exact_policy("tool.use", "shell:*credentials/*.key*") ],
@@ -67,6 +95,8 @@ RULES = [
   [ "edit .github/pull_request_template.md", exact_policy("tool.use", "edit:.github/pull_request_template.md") ],
   [ "mcp.use *", exact_policy("mcp.use", "*") ],
   [ "plugin.use *", exact_policy("plugin.use", "*") ],
+  [ "websearch.use *", exact_policy("websearch.use", "*") ],
+  [ "skill lead-*", exact_policy("tool.use", "skill:lead-*") ],
   [ "external_directory:*", exact_policy("tool.use", "external_directory:*") ]
 ].freeze
 
@@ -187,6 +217,13 @@ def inspect_config(root)
     errors << "no deny policy for #{name}" if count.zero?
   end
 
+  unrequired = entries.select do |policy|
+    policy.effect == "deny" && RULES.none? { |_, matcher| matcher.call(policy) }
+  end
+  unrequired.each do |policy|
+    errors << "deny policy #{policy.action} #{policy.resource.inspect} is not in the required list"
+  end
+
   unless errors.empty?
     errors.each { |error| warn "opencode_policy_check: #{error}" }
     return 1
@@ -223,9 +260,25 @@ def run_check(root)
   Open3.capture2e(RbConfig.ruby, File.expand_path(__FILE__), "--root", root)
 end
 
+def policy_category(policy)
+  case policy.resource
+  when /\Ashell:/ then "shell"
+  when /\Aread:/ then "read"
+  when /\Aedit:/ then "edit"
+  when /\Askill:/ then "skill"
+  when /\Aexternal_directory:/ then "external directory"
+  else policy.action
+  end
+end
+
+def policy_detail(policy)
+  policy.resource.sub(/\A(?:shell|read|edit|skill|external_directory):/, "")
+end
+
 def canary(source)
   checks = 0
   failures = 0
+  categories = {}
 
   Dir.mktmpdir("monova-opencode-policy") do |dir|
     reset_config(dir, source)
@@ -242,23 +295,39 @@ def canary(source)
     RULES.each do |name, matcher|
       checks += 1
       reset_config(dir, source)
+      removed = []
       mutate_config(dir) do |data|
         data["policies"] = Array(data["policies"]).reject do |policy|
-          matcher.call(
-            Policy.new(
-              action: policy["action"],
-              resource: policy["resource"],
-              effect: policy["effect"]
-            )
+          candidate = Policy.new(
+            action: policy["action"],
+            resource: policy["resource"],
+            effect: policy["effect"]
           )
+          matched = matcher.call(candidate)
+          removed << candidate if matched
+          matched
         end
       end
       output, status = run_check(dir)
-      if status.success?
+      if removed.empty?
+        failures += 1
+        warn "opencode_policy_check --canary: #{name} matches no deny policy"
+      elsif status.success?
         failures += 1
         warn "opencode_policy_check --canary: removing #{name} still passes"
       else
-        puts "ok: removing #{name} fails"
+        policy = removed.first
+        categories[policy_category(policy)] ||= policy
+        puts "ok: removing #{policy_category(policy)} rule #{policy_detail(policy)} fails"
+      end
+    end
+
+    %w[shell read edit skill external\ directory].each do |required|
+      if categories.key?(required)
+        puts "ok: category #{required} fails on removal of #{policy_detail(categories[required])}"
+      else
+        failures += 1
+        warn "opencode_policy_check --canary: no failing removal case for #{required}"
       end
     end
 
