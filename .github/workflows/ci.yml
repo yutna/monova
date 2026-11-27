@@ -235,6 +235,15 @@ jobs:
       - name: PostgreSQL image check canary
         run: script/ci/postgres_image_check --canary
 
+      - name: Packwerk package graph
+        run: bin/packwerk validate
+
+      - name: Packwerk dependencies
+        run: bin/packwerk check
+
+      - name: Packwerk recorded violations
+        run: script/ci/package_todo_check
+
       - name: OpenCode policy check
         run: script/ci/opencode_policy_check
 

@@ -33,6 +33,10 @@ group :development, :test do
   gem "rubocop-rspec", "3.10.2", require: false
   gem "rubocop-rspec_rails", "2.33.0", require: false
   gem "rspec-rails", "8.1.0"
+
+  # Architecture: check the declared engine graph (ARCH-04, ARCH-06).
+  gem "packwerk", "3.3.1", require: false
+  gem "packwerk-extensions", "0.4.0", require: false
 end
 
 group :test do

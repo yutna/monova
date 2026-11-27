@@ -1,0 +1,31 @@
+require:
+  - packwerk/privacy/checker
+  - packwerk/layer/checker
+
+layers:
+  - root
+  - product
+  - domain
+  - kernel
+
+include:
+  - "app/**/*.{rb,rake,erb}"
+  - "lib/**/*.{rb,rake,erb}"
+  - "engines/*/app/**/*.{rb,rake,erb}"
+
+exclude:
+  - "bin/**/*"
+  - "config/**/*"
+  - "db/**/*"
+  - "engines/*/config/**/*"
+  - "engines/*/db/**/*"
+  - "engines/*/lib/**/*"
+  - "engines/*/spec/**/*"
+  - "log/**/*"
+  - "node_modules/**/*"
+  - "public/**/*"
+  - "script/**/*"
+  - "spec/**/*"
+  - "storage/**/*"
+  - "tmp/**/*"
+  - "vendor/**/*"

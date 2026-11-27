@@ -1,0 +1,32 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# ARCH-05: the repository never records a boundary violation in a
+# package_todo.yml. A violation is fixed in the pull request that introduces
+# it, so this check fails when one is tracked or present in the working tree.
+
+require "open3"
+
+RULE_ID = "ARCH-05"
+ROOT = File.expand_path("../..", __dir__)
+FILENAME = "package_todo.yml"
+
+def fail_rule(message)
+  warn "package_todo_check: #{RULE_ID}: #{message}"
+  exit 1
+end
+
+Dir.chdir(ROOT) do
+  tracked, status = Open3.capture2("git", "ls-files", "-z")
+  fail_rule("could not read the tracked files with git") unless status.success?
+
+  tracked = tracked.split("\0").select { |path| File.basename(path) == FILENAME }
+  unless tracked.empty?
+    fail_rule("tracked package_todo.yml files are forbidden: #{tracked.sort.join(", ")}")
+  end
+
+  present = Dir.glob("**/#{FILENAME}").sort
+  unless present.empty?
+    fail_rule("package_todo.yml files are forbidden: #{present.join(", ")}")
+  end
+end
