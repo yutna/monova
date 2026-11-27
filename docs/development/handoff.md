@@ -105,25 +105,26 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 ## State
 
-- v0.3.0: every implementer issue is merged (#13, #15, #16, #17, #18)
-  and the lead issues too. Left: the milestone gate (protocol §7), the
-  `VERSION` bump to 0.3.0 through an implementer issue, then closing the
-  milestone.
-- v0.4.0 is planned: lead issues #32 to #47 draft the specification
-  files (00 and 13 first, as `Depends on` says), #48 builds
-  `docs:check`, #28 hardens the Node toolchain.
+- v0.3.0 and v0.4.0 are gated, released and closed (v0.4.0 on
+  2026-11-27; `VERSION` is 0.4.0). The specification files exist.
+- v0.5.0 is planned and in progress: #103 is merged (#113). #89 (drop
+  `image_processing`, PR #112) is with the implementer.
+- v0.5.0 dependency chain: #89 → #102 → #105; #101 and #105 → #106 →
+  #107 → #108 → #109 and #110. #104 and #111 are ready now. Lead issue
+  #95 (gate findings 5 and 9 in the spec) waits for #101, #102, #104
+  and #106.
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Gate and release v0.3.0.
-2. Draft the v0.4.0 specification files in dependency order; dispatch
-   #48 after #32 and #28 any time.
-3. Plan v0.5.0 when v0.4.0 is nearly done: PostgreSQL with RLS roles and
-   the `monova-postgres` container, RSpec migration, exact gem pins and a
-   grouped Gemfile, the Dev Container.
+1. Review PR #112 (#89), then dispatch the v0.5.0 issues in the order
+   of the chain above.
+2. Do #95 once its dependencies are closed.
+3. Plan v0.6.0 when v0.5.0 is nearly done, from the specification
+   (for example tokens and tenancy, AUTH and DATA), never further ahead.
+4. Gate and release v0.5.0.
 
 ## After the major release
 
