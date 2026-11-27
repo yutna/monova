@@ -172,7 +172,7 @@ Core's specs prove each of these, and they run in every `bin/ci`:
 ### TS-07 — Every custom guard has a canary in the same run (MUST · ADR-19)
 
 - A custom guard is a script under `script/<area>/`. Its canary
-  fixtures live next to it in `script/<area>/fixtures/<guard>/`: one
+  fixtures live next to it in `script/<area>/fixtures/`: one
   clean fixture and one broken fixture per failure the guard reports.
   The application and RSpec never load them.
 - `bin/ci` runs the guard on the code, where it must pass, and then its
