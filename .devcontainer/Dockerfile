@@ -15,7 +15,7 @@ RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
       autoconf bison build-essential ca-certificates curl git jq \
       libffi-dev libgdbm-dev libncurses-dev libpq-dev libreadline-dev \
-      libssl-dev libvips libyaml-dev patch pkg-config postgresql-client \
+      libssl-dev libyaml-dev patch pkg-config postgresql-client \
       sudo tzdata unzip zlib1g-dev && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
