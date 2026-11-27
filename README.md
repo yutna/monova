@@ -30,7 +30,7 @@ all meant to be replaced.
 - Rails 8.1 in API-only mode
 - SQLite for development and test, with separate SQLite databases for
   Solid Cache, Solid Queue and Solid Cable in production
-- Active Job, Action Cable and Active Storage (with libvips variants)
+- Active Job, Action Cable and Active Storage
 - Kamal 2, Thruster and a production Dockerfile
 - Minitest, Brakeman, bundler-audit, and RuboCop with rails-omakase
 - GitHub Actions CI with a single required `ci-ok` gate, plus the shared
@@ -44,7 +44,6 @@ all meant to be replaced.
 - Ruby 4.0.10 (installed by mise)
 - Node 26.13.1 (installed by mise)
 - SQLite 3.8 or newer
-- libvips (for Active Storage variants)
 - Docker (optional, for container builds)
 
 ## Getting started
