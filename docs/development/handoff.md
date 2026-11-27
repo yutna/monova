@@ -107,22 +107,23 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 - v0.3.0 through v0.6.0 are gated, released and closed (`VERSION` is
   0.6.0, #144). v0.6.0 held the v0.5.0 gate findings (#140, #141, #142).
-- v0.7.0 (the kernel engine and Packwerk) holds #145, #146 and #147,
-  all `owner: implementer`. #145 merged as #148 (core engine, engine
-  specs in `bin/rspec`) and #146 as #150 (Packwerk check in CI, no
-  `package_todo.yml`). #147 (canaries for the dependency, privacy and
-  layer checks) is with the implementer, draft PR #151.
+- v0.7.0 (the kernel engine and Packwerk) held #145, #146 and #147,
+  all merged (#148, #150, #151). The first gate run found two blocking
+  issues, filed in v0.7.0: #153 (check the repository's own Packwerk
+  configuration) merged as #155, and #154 (fail the Packwerk check on an
+  empty input set) is with the implementer, PR #156.
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review PR #151 (#147) when it is marked ready, and merge it.
-2. When every v0.7.0 issue is closed, run the gate, bump `VERSION` and
-   close the milestone.
-3. Plan v0.8.0 (AUTH and DATA on top of core) once v0.7.0 is nearly
-   done.
+1. Review PR #156 (#154) once its implementer run has ended, and merge
+   it.
+2. Rerun the v0.7.0 gate with a fresh subagent; when it passes, bump
+   `VERSION` to 0.7.0 through an implementer issue and close the
+   milestone.
+3. Plan v0.8.0 (AUTH and DATA on top of core).
 
 ## After the major release
 
