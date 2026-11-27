@@ -95,3 +95,30 @@ denies `AskUserQuestion` in the driver. A headless probe proved that
 found that protocol §10 claimed the GitHub ruleset as enforced without a
 check (#57), and filed three follow-ups (one duplicate of #28, closed).
 Tick 2 dispatched #57. Cost per lead tick: USD 0.30 to 1.20.
+
+## 2026-11-27 — v0.5.0 — milestone gate
+
+**What happened.** The gate passed, with three process findings. The
+host has no PostgreSQL 18 client, so `bin/ci` on a clean checkout
+needed a `psql` and `pg_dump` shim taken from the pinned image. The
+metrics in the final review comments used different formats from one
+pull request to the next, which made the gate's summary slow. Handoff
+PR #126 changed a control file without the `owner: lead` label.
+
+**Root cause.** The README assumes host clients that only the Dev
+Container provides. Protocol §12 lists the metrics but not one layout.
+The lead labels its own pull requests by hand.
+
+**What changed.** The lead writes every final review comment with one
+metrics block: wall time, rounds, session tokens (input, output, cache
+read), defects. Every lead pull request gets `owner: lead` when it is
+opened.
+
+**Metrics.** 12 implementer pull requests: 10 approved on the first
+pass, 2 change rounds in total, 3 defects found in review; about 166
+minutes of implementer wall time (median about 10.5); about 40M tokens
+with cache.
+
+**Protocol feedback.** §12 could fix the metrics layout. Whether the
+host loop should install a PostgreSQL 18 client or always run `bin/ci`
+in the Dev Container is open for v0.6.0 planning.
