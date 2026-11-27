@@ -30,5 +30,5 @@ end
 
 group :test do
   # Test: the guard that blocks real HTTP (TS-02, ADR-24).
-  gem "webmock", "3.34.0"
+  gem "webmock", "3.40.0"
 end
