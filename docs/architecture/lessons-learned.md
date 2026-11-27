@@ -122,3 +122,35 @@ with cache.
 **Protocol feedback.** §12 could fix the metrics layout. Whether the
 host loop should install a PostgreSQL 18 client or always run `bin/ci`
 in the Dev Container is open for v0.6.0 planning.
+
+## 2026-11-28 — v0.8.0 — #166 (finding admission, from Rafelo)
+
+**What happened.** Rafelo reported (at the owner's request) that its AI
+gate audits stopped converging: in about 27 hours its round 3 closed 13
+of 124 issues while the gates filed 26 new S3 findings, most of them
+edge cases in hand-written parsers for small languages. Monova's gates
+showed the start of the same pattern: the v0.7.0 gate and its follow-up
+drew three findings on one shell guard, `packwerk_check`: #153, #154
+and #158.
+
+**Root cause.** Taken from Rafelo's entry of 2026-11-28 and applied
+here. The protocol did not define S1, S2 or S3 and did not ask for a
+failure scenario, so any edge case an auditor could imagine became an
+issue. No threat model said whom a guard defends against. A
+hand-written text matcher has an unbounded input space. A fix that
+patches the reported string leaves the neighbouring case for the next
+audit. And the layers recurse: guards check code, canaries check
+guards, gates check canaries.
+
+**What changed.** Protocol §7 gained a finding admission rule: a
+four-part failure scenario, severity by impact, a threat model per
+surface (adversarial for the runtime that ships to adopters, honest
+mistakes for tooling), a fix per input class, parser replacement on a
+second same-class finding, a redesign after three rounds, no silent
+S1 or S2 downgrade, and a count of findings per component. §6 says how
+its two-round limit and the redesign trigger differ. The loop prompt
+tells the gate subagent to apply the rule.
+
+**Spec feedback.** None. The rule stays in the protocol, not in
+`docs/architecture/`, because an adopted copy keeps the specification
+but not the template's own process (ADR-01).
