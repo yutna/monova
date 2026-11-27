@@ -13,6 +13,7 @@ require "uri"
 
 DEFAULT_REPOSITORY = "yutna/monova"
 RULESET_NAME = "main"
+RULE_ID = "WF-03"
 REQUIRED_CONTEXTS = [ "ci-ok", "pr-check / check" ].freeze
 DEFAULT_BRANCH_REFS = [ "~DEFAULT_BRANCH", "refs/heads/main" ].freeze
 API_VERSION = "2022-11-28"
@@ -21,9 +22,9 @@ FIXTURE = File.expand_path("fixtures/main_ruleset.json", __dir__)
 def read_ruleset(path)
   JSON.parse(File.read(path))
 rescue Errno::ENOENT
-  abort "ruleset_check: #{path} does not exist"
+  abort "ruleset_check: #{RULE_ID}: #{path} does not exist"
 rescue JSON::ParserError => error
-  abort "ruleset_check: cannot parse #{path}: #{error.message}"
+  abort "ruleset_check: #{RULE_ID}: cannot parse #{path}: #{error.message}"
 end
 
 def rules(data)
@@ -69,7 +70,7 @@ def evaluate(data)
   failed = results.reject { |_, ok, _| ok }
 
   results.each do |name, ok, detail|
-    line = ok ? "ok: #{name}" : "ruleset_check: FAIL #{name}"
+    line = ok ? "ok: #{name}" : "ruleset_check: #{RULE_ID} FAIL #{name}"
     line += " (#{detail})" if detail
     ok ? puts(line) : warn(line)
   end
@@ -78,7 +79,7 @@ def evaluate(data)
     puts "ruleset_check: OK (#{results.length} checks)"
     0
   else
-    warn "ruleset_check: #{failed.length} of #{results.length} checks failed"
+    warn "ruleset_check: #{RULE_ID}: #{failed.length} of #{results.length} checks failed"
     1
   end
 end
@@ -96,14 +97,14 @@ def api_get(url, token)
   end
 
   unless response.is_a?(Net::HTTPSuccess)
-    abort "ruleset_check: GET #{url} returned #{response.code} #{response.message}"
+    abort "ruleset_check: #{RULE_ID}: GET #{url} returned #{response.code} #{response.message}"
   end
 
   JSON.parse(response.body)
 rescue JSON::ParserError => error
-  abort "ruleset_check: cannot parse the response from #{url}: #{error.message}"
+  abort "ruleset_check: #{RULE_ID}: cannot parse the response from #{url}: #{error.message}"
 rescue Timeout::Error, SystemCallError, IOError, SocketError => error
-  abort "ruleset_check: cannot fetch #{url}: #{error.class}: #{error.message}"
+  abort "ruleset_check: #{RULE_ID}: cannot fetch #{url}: #{error.class}: #{error.message}"
 end
 
 def fetch_main_ruleset
@@ -115,7 +116,7 @@ def fetch_main_ruleset
   ruleset = Array(api_get(base, token)).find do |candidate|
     candidate.is_a?(Hash) && candidate["name"] == RULESET_NAME && candidate["target"] == "branch"
   end
-  abort "ruleset_check: no branch ruleset named #{RULESET_NAME.inspect} in #{repository}" unless ruleset
+  abort "ruleset_check: #{RULE_ID}: no branch ruleset named #{RULESET_NAME.inspect} in #{repository}" unless ruleset
 
   api_get("#{base}/#{ruleset["id"]}", token)
 end
@@ -162,7 +163,7 @@ def canary(path)
     puts "ok: unmodified fixture passes"
   else
     unexpected_passes += 1
-    warn "ruleset_check --canary: unmodified fixture fails: #{failures(source).join(", ")}"
+    warn "ruleset_check --canary: #{RULE_ID}: unmodified fixture fails: #{failures(source).join(", ")}"
   end
 
   mutations.each do |name, mutation|
@@ -173,19 +174,19 @@ def canary(path)
 
     if failed.empty?
       unexpected_passes += 1
-      warn "ruleset_check --canary: #{name} still passes"
+      warn "ruleset_check --canary: #{RULE_ID}: #{name} still passes"
     else
-      puts "ok: #{name} fails (#{failed.join(", ")})"
+      puts "ok: #{name} fails (#{RULE_ID}: #{failed.join(", ")})"
     end
   end
 
   if checked.zero?
-    warn "ruleset_check --canary: checked 0 copies"
+    warn "ruleset_check --canary: #{RULE_ID}: checked 0 copies"
     return 1
   end
 
   if unexpected_passes.positive?
-    warn "ruleset_check --canary: checked #{checked} copies; unexpected passes=#{unexpected_passes}"
+    warn "ruleset_check --canary: #{RULE_ID}: checked #{checked} copies; unexpected passes=#{unexpected_passes}"
     return 1
   end
 
