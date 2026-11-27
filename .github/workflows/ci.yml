@@ -13,6 +13,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # WF-05: a Gemfile.lock that does not match the Gemfile fails every job.
+  BUNDLE_FROZEN: "true"
+
 jobs:
   actionlint:
     runs-on: ubuntu-latest
