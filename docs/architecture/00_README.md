@@ -187,8 +187,8 @@ image pinned by version and digest, and Ruby and Node are installed from
 `mise.toml`. `bin/ci` runs inside the container, GitHub CI runs the same
 steps as parallel jobs (WF-02), and a CI job rebuilds the container and
 runs `bin/ci` in it whenever a pin file changes, so the container cannot
-drift (`09_observability_ops.md`). This is target state: the template
-has no `.devcontainer/` yet, and `bin/ci` runs on the host.
+drift (`09_observability_ops.md`). The template's own build loop also
+runs `bin/ci` on the host, with the same pins.
 
 ## Adopting Monova
 

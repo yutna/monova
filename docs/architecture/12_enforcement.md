@@ -38,9 +38,9 @@ decision, never in the pull request that would profit from it.
 
 ### Today
 
-The template ships no engines and no kernel yet, and its RSpec suite
-covers only the health check, so every rule below except WF-03 is
-`review` today. The tools CI runs now are:
+The template ships no engines and no kernel yet; its RSpec suite covers
+the health check and the database roles (DATA-01), so every rule below
+except WF-03 is `review` today. The tools CI runs now are:
 
 | Tool | Checks | Canary |
 | --- | --- | --- |
@@ -55,6 +55,8 @@ covers only the health check, so every rule below except WF-03 is
 | ShellCheck (GitHub CI) | Shell scripts | none |
 | `script/loop/test` | The loop driver of the template's build | none |
 | `script/ci/ruleset_check` (GitHub CI) | The `main` ruleset (WF-03) | yes |
+| `script/ci/postgres_image_check` | One PostgreSQL pin (OPS-01) | yes |
+| `devcontainer` job (GitHub CI) | Dev Container runs `bin/ci` | none |
 
 The process guards of the template's own build (the lead guard and the
 OpenCode policies) guard the build, not the application;
@@ -239,6 +241,10 @@ canary proves that each one fails (`08_security.md`).
 | OPS-08 | — | review | review |
 | OPS-09 | — | review | review |
 
+OPS-01 stays `review` although its pin check and the Dev Container job
+run: no Dependabot `docker` entry watches the digest-pinned base images
+yet, so a stale digest is not reported.
+
 OPS-07 to OPS-09 are about a deployed application; the template has
 none, so the adopter's review and runbooks check them.
 
@@ -340,9 +346,9 @@ the reviewer says so and reads it as one (`docs/development/protocol.md`
 `bin/ci` is the gate for every pull request (WF-02); GitHub CI runs the
 same steps as parallel jobs, and the `ci-ok` check decides the merge.
 A few tools need GitHub and run only there: actionlint, ShellCheck and
-the live `ruleset_check`. The Dev Container (OPS-01) is not built yet,
-so `bin/ci` runs on the host. A pull request merges only when it is
-green.
+the live `ruleset_check`. The `devcontainer` job builds the Dev
+Container (OPS-01) and runs `bin/ci` inside it when a pin file changes,
+weekly, and on demand. A pull request merges only when it is green.
 
 Before a release, a reviewer who did not write the changes audits the
 milestone:
