@@ -1,0 +1,9 @@
+{
+  "name": "Monova",
+  "dockerComposeFile": "compose.yaml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/monova",
+  "remoteUser": "vscode",
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "bin/setup --skip-server"
+}

@@ -80,6 +80,27 @@ Production reads the connection from the environment and requires
 `MONOVA_MIGRATOR_PASSWORD`, `MONOVA_APP_PASSWORD` and
 `MONOVA_BACKUP_PASSWORD`.
 
+## Dev Container
+
+The repository includes a Dev Container for editors that support the
+[Dev Containers specification](https://containers.dev/). It builds the
+application image from `.devcontainer/Dockerfile`, which installs Ruby and
+Node through `mise` from `mise.toml`, and starts PostgreSQL from the same
+image the CI database service and `script/dev/postgres` use. The post-create
+step runs `bin/setup --skip-server`, so the roles, the databases and the
+seeds exist before the editor attaches.
+
+Run it from the repository root with the Dev Containers CLI at an exact
+version:
+
+```sh
+npx @devcontainers/cli@0.91.0 up --workspace-folder .
+npx @devcontainers/cli@0.91.0 exec --workspace-folder . bin/ci
+```
+
+Inside the container the database is reached at `postgres:5432` through the
+`PG*` settings, not at the host's `127.0.0.1:5433`.
+
 ## Credentials
 
 The template intentionally does not ship `config/credentials.yml.enc`. Every
