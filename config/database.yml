@@ -1,40 +1,69 @@
-# SQLite. Versions 3.8.0 and up are supported.
-#   gem install sqlite3
+# PostgreSQL for the primary database and for the Solid Cache, Solid Queue and
+# Solid Cable databases (ADR-04, DATA-04).
 #
-#   Ensure the SQLite 3 gem is defined in your Gemfile
-#   gem "sqlite3"
-#
+# Development and test talk to the container started by script/dev/postgres.
+# Production reads every connection setting from the environment only.
+
 default: &default
-  adapter: sqlite3
+  adapter: postgresql
+  encoding: unicode
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
-  timeout: 5000
+  host: <%= ENV.fetch("PGHOST", "127.0.0.1") %>
+  port: <%= ENV.fetch("PGPORT", 5433) %>
+  username: <%= ENV.fetch("PGUSER", "postgres") %>
+  password: <%= ENV.fetch("PGPASSWORD", "postgres") %>
 
 development:
-  <<: *default
-  database: storage/development.sqlite3
-
-# Warning: The database defined as "test" will be erased and
-# re-generated from your development database when you run "rake".
-# Do not set this db to the same as development or production.
-test:
-  <<: *default
-  database: storage/test.sqlite3
-
-# Store production database in the storage/ directory, which by default
-# is mounted as a persistent Docker volume in config/deploy.yml.
-production:
   primary:
     <<: *default
-    database: storage/production.sqlite3
+    database: monova_development
   cache:
     <<: *default
-    database: storage/production_cache.sqlite3
+    database: monova_development_cache
     migrations_paths: db/cache_migrate
   queue:
     <<: *default
-    database: storage/production_queue.sqlite3
+    database: monova_development_queue
     migrations_paths: db/queue_migrate
   cable:
     <<: *default
-    database: storage/production_cable.sqlite3
+    database: monova_development_cable
+    migrations_paths: db/cable_migrate
+
+test:
+  primary:
+    <<: *default
+    database: monova_test
+  cache:
+    <<: *default
+    database: monova_test_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *default
+    database: monova_test_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *default
+    database: monova_test_cable
+    migrations_paths: db/cable_migrate
+
+production:
+  primary: &production
+    <<: *default
+    host: <%= Rails.env.production? ? ENV.fetch("PGHOST") : "127.0.0.1" %>
+    port: <%= Rails.env.production? ? ENV.fetch("PGPORT") : 5433 %>
+    username: <%= Rails.env.production? ? ENV.fetch("PGUSER") : "postgres" %>
+    password: <%= Rails.env.production? ? ENV.fetch("PGPASSWORD") : "postgres" %>
+    database: <%= ENV.fetch("PGDATABASE", "monova_production") %>
+  cache:
+    <<: *production
+    database: <%= ENV.fetch("PGDATABASE_CACHE", "monova_production_cache") %>
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *production
+    database: <%= ENV.fetch("PGDATABASE_QUEUE", "monova_production_queue") %>
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *production
+    database: <%= ENV.fetch("PGDATABASE_CABLE", "monova_production_cable") %>
     migrations_paths: db/cable_migrate

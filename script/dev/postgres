@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Start the local PostgreSQL container the development loop uses.
+#
+# The image, version and digest match the CI service and the other
+# environments (OPS-01). Running this script again is safe: it starts the
+# existing container, or does nothing when it is already running.
+set -euo pipefail
+
+CONTAINER="monova-postgres"
+IMAGE="postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42"
+VOLUME="monova-postgres-data"
+PORT="5433"
+PASSWORD="postgres"
+
+if docker container inspect "$CONTAINER" >/dev/null 2>&1; then
+  if [ "$(docker container inspect --format '{{.State.Running}}' "$CONTAINER")" = "true" ]; then
+    echo "$CONTAINER is already running on 127.0.0.1:$PORT"
+    exit 0
+  fi
+
+  echo "Starting the existing $CONTAINER container"
+  docker start "$CONTAINER" >/dev/null
+else
+  echo "Creating $CONTAINER from $IMAGE"
+  docker run --detach \
+    --name "$CONTAINER" \
+    --publish "127.0.0.1:${PORT}:5432" \
+    --volume "${VOLUME}:/var/lib/postgresql" \
+    --env "POSTGRES_PASSWORD=${PASSWORD}" \
+    "$IMAGE" >/dev/null
+fi
+
+echo "Waiting for PostgreSQL to accept connections"
+for _ in $(seq 1 30); do
+  if docker exec "$CONTAINER" pg_isready --quiet; then
+    echo "PostgreSQL is ready on 127.0.0.1:$PORT"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "PostgreSQL did not become ready in time" >&2
+exit 1

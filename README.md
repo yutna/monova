@@ -28,8 +28,8 @@ all meant to be replaced.
 ## What is included
 
 - Rails 8.1 in API-only mode
-- SQLite for development and test, with separate SQLite databases for
-  Solid Cache, Solid Queue and Solid Cable in production
+- PostgreSQL 18 for development, test and production, with separate databases
+  for Solid Cache, Solid Queue and Solid Cable
 - Active Job, Action Cable and Active Storage
 - Kamal 2, Thruster and a production Dockerfile
 - Minitest, Brakeman, bundler-audit, and RuboCop with rails-omakase
@@ -43,14 +43,15 @@ all meant to be replaced.
 - mise
 - Ruby 4.0.10 (installed by mise)
 - Node 26.13.1 (installed by mise)
-- SQLite 3.8 or newer
-- Docker (optional, for container builds)
+- Docker, for the local PostgreSQL container and container builds
 
 ## Getting started
 
-Install dependencies and prepare the database:
+Start the local PostgreSQL container, install dependencies and prepare the
+database:
 
 ```sh
+script/dev/postgres
 bin/setup --skip-server
 ```
 
@@ -63,6 +64,10 @@ bin/dev
 Open <http://localhost:3000/up>. The template has no application-specific
 routes yet; `/up` is the health check used by load balancers and uptime
 monitors.
+
+Development and test connect to `127.0.0.1:5433` as `postgres`. Override the
+connection with `PGHOST`, `PGPORT`, `PGUSER` and `PGPASSWORD`; production reads
+those variables only.
 
 ## Credentials
 
@@ -98,8 +103,9 @@ the Rails application does not depend on OpenCode.
 
 ## Deployment
 
-The production image uses the included Dockerfile, Thruster and a persistent
-SQLite volume. Kamal configuration lives in `config/deploy.yml`. Set
+The production image uses the included Dockerfile and Thruster. Kamal
+configuration lives in `config/deploy.yml`. Production connects to PostgreSQL
+from `PGHOST`, `PGPORT`, `PGUSER` and `PGPASSWORD`; set those and
 `RAILS_MASTER_KEY` in the deployment environment before starting the
 application.
 
@@ -111,7 +117,7 @@ app/models          persistence and domain models
 app/jobs            background jobs
 app/mailers         mailers
 config/             environments, routes, deployment and Solid* settings
-db/                 schema, seeds and Solid* database schemas
+db/                 structure.sql, seeds and Solid* structure files
 test/               Minitest integration and model tests
 docs/               OpenCode and project notes
 .opencode/          OpenCode config and vendored design skills
