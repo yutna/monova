@@ -27,10 +27,14 @@ RSpec.describe Monova::Core::Tenancy do
     nil
   end
 
-  def ignoring_boom
+  def ignoring_statement_error
     yield
-  rescue RuntimeError
+  rescue ActiveRecord::StatementInvalid
     nil
+  end
+
+  def failing_query
+    connection.execute("SELECT 1 / 0")
   end
 
   it "connects as the runtime role" do
@@ -50,12 +54,12 @@ RSpec.describe Monova::Core::Tenancy do
   end
 
   it "propagates an error from the block" do
-    expect { described_class.with_tenant(tenant_id) { raise "boom" } }
-      .to raise_error(RuntimeError, "boom")
+    expect { described_class.with_tenant(tenant_id) { failing_query } }
+      .to raise_error(ActiveRecord::StatementInvalid, /division by zero/)
   end
 
   it "clears the tenant after a block that raised" do
-    ignoring_boom { described_class.with_tenant(tenant_id) { raise "boom" } }
+    ignoring_statement_error { described_class.with_tenant(tenant_id) { failing_query } }
 
     expect(current_tenant).to be_blank
   end

@@ -18,13 +18,16 @@ module Monova
 
       class << self
         # Opens a transaction, sets the tenant for it, and yields. The block
-        # returns its own value. When the setting was empty before the block,
-        # the helper restores that empty value at the end, because a local
-        # setting survives a released savepoint (TS-03).
+        # returns its own value. Inside an already-open transaction it opens a
+        # savepoint, and it restores the previous setting when its block ends:
+        # a transaction-local setting lasts until the outermost transaction
+        # ends, so the enclosing transaction would otherwise keep the tenant
+        # (TS-03).
         def with_tenant(tenant_id)
           id = tenant_id!(tenant_id)
           connection = ActiveRecord::Base.connection
-          previous = current_setting(connection) if connection.transaction_open?
+          nested = connection.transaction_open?
+          previous = current_setting(connection) if nested
 
           if previous.present? && previous != id
             raise TenantConflict, "the transaction already works for tenant #{previous}"
@@ -33,7 +36,7 @@ module Monova
           changed = previous.blank?
 
           begin
-            connection.transaction do
+            connection.transaction(requires_new: nested) do
               set_setting(connection, id) if changed
               yield
             end
