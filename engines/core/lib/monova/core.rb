@@ -12,3 +12,4 @@ end
 
 require "monova/core/engine"
 require "monova/core/migration"
+require "monova/core/table_definition"

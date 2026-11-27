@@ -4,6 +4,7 @@
 # helper, so a new table never falls back to bigint or gen_random_uuid().
 ActiveSupport.on_load(:active_record) do
   ActiveRecord::Migration.prepend(Monova::Core::Migration)
+  ActiveRecord::ConnectionAdapters::TableDefinition.prepend(Monova::Core::TableDefinition)
 end
 
 # DATA-10: datetime and timestamp columns keep their zone, so a
