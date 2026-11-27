@@ -8,6 +8,7 @@
 # variables. It is safe to run again: it creates what is missing, resets a role
 # that drifted to the DATA-01 attributes, and leaves everything else alone.
 
+require "bundler/setup"
 require "pg"
 
 ROLES = {
