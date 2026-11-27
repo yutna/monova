@@ -264,7 +264,8 @@ jobs:
             sudo apt-get install --no-install-recommends -y shellcheck
           fi
           shellcheck script/loop/driver script/loop/install \
-            script/loop/uninstall script/loop/test
+            script/loop/uninstall script/loop/test \
+            script/dev/postgres bin/docker-entrypoint
 
       - name: Loop driver self-test
         run: script/loop/test
