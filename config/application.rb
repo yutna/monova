@@ -28,6 +28,16 @@ module Monova
     # check constraints that schema.rb cannot express (DATA-04).
     config.active_record.schema_format = :sql
 
+    # Store time with its zone, in UTC (DATA-10).
+    config.time_zone = "UTC"
+    config.active_record.default_timezone = :utc
+
+    # Emit UUID primary keys, matching the default core's table helper sets
+    # (DATA-08).
+    config.generators do |generators|
+      generators.orm :active_record, primary_key_type: :uuid
+    end
+
     # Only loads a smaller set of middleware suitable for API only apps.
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.

@@ -27,6 +27,19 @@ CREATE TABLE public.ar_internal_metadata (
 
 
 --
+-- Name: core_tenants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.core_tenants (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    name text NOT NULL,
+    created_at timestamp(6) with time zone NOT NULL,
+    updated_at timestamp(6) with time zone NOT NULL,
+    CONSTRAINT core_tenants_name_not_blank CHECK ((btrim(name) <> ''::text))
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -44,6 +57,14 @@ ALTER TABLE ONLY public.ar_internal_metadata
 
 
 --
+-- Name: core_tenants core_tenants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.core_tenants
+    ADD CONSTRAINT core_tenants_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -58,5 +79,6 @@ ALTER TABLE ONLY public.schema_migrations
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261127090000'),
 ('0');
 
