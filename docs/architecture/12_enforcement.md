@@ -59,7 +59,7 @@ other rule below is `review` today. The tools CI runs now are:
 | `script/ci/ruleset_check` (GitHub CI) | The `main` ruleset (WF-03) | yes |
 | `script/ci/postgres_image_check` | One PostgreSQL pin (OPS-01) | yes |
 | `bin/packwerk validate` | Package graph, no cycle (ARCH-04) | yes |
-| `bin/packwerk check` | Dependency, privacy, layer (ARCH-02, 04, 06) | yes |
+| `script/ci/packwerk_check` | Dependency, privacy, layer (ARCH-02, 04, 06) | yes |
 | `script/ci/packwerk_config_check` | Packwerk config (ARCH-02, 04, 06) | yes |
 | `script/ci/package_todo_check` | No `package_todo.yml` (ARCH-05) | yes |
 | `devcontainer` job (GitHub CI) | Dev Container runs `bin/ci` | none |
@@ -78,7 +78,7 @@ adopter keeps.
 | ARCH-01 | — | review | review |
 | ARCH-02 | Layer checker (`packwerk-extensions`) | enforced | enforced |
 | ARCH-03 | — | review | review |
-| ARCH-04 | `bin/packwerk validate` and `check` | enforced | enforced |
+| ARCH-04 | `bin/packwerk validate`, `packwerk_check` | enforced | enforced |
 | ARCH-05 | `script/ci/package_todo_check` | enforced | enforced |
 | ARCH-06 | Packwerk privacy checker, `enforce_privacy` | enforced | enforced |
 | ARCH-07 | — | review | review |
