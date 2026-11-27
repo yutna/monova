@@ -105,25 +105,31 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 ## State
 
-- v0.3.0 through v0.6.0 are gated, released and closed (`VERSION` is
-  0.6.0, #144). v0.6.0 held the v0.5.0 gate findings (#140, #141, #142).
-- v0.7.0 (the kernel engine and Packwerk) held #145, #146 and #147,
-  all merged (#148, #150, #151). The first gate run found two blocking
-  issues, filed in v0.7.0: #153 (check the repository's own Packwerk
-  configuration) merged as #155, and #154 (fail the Packwerk check on an
-  empty input set) is with the implementer, PR #156.
+- v0.3.0 through v0.7.0 are gated, released and closed (`VERSION` is
+  0.7.0, #160). v0.7.0 added the `core` kernel engine and Packwerk; its
+  gate findings #153 and #154 merged as #155 and #156.
+- v0.8.0 (AUTH and DATA on top of core) is open. Merged so far: #158
+  (Packwerk's singular file count, #165), #161 (strong_migrations and
+  its canary, #167) and #166 (the finding admission rule in protocol
+  §7, #168). Open, in order: #162 (core's base record, table defaults
+  and `core_tenants`) is with the implementer, draft PR #169; #163 (the
+  per-transaction tenancy helper) and #164 (the tenant policy helper,
+  `TenantOwned` and the DATA-03 catalog check) wait for it.
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review PR #156 (#154) once its implementer run has ended, and merge
+1. Review PR #169 (#162) once its implementer run has ended, and merge
    it.
-2. Rerun the v0.7.0 gate with a fresh subagent; when it passes, bump
-   `VERSION` to 0.7.0 through an implementer issue and close the
+2. Dispatch #163, then #164, as their dependencies close.
+3. When every v0.8.0 issue is closed, run the gate with a fresh
+   subagent that applies the finding admission rule; when it passes,
+   bump `VERSION` to 0.8.0 through an implementer issue and close the
    milestone.
-3. Plan v0.8.0 (AUTH and DATA on top of core).
+4. Plan v0.9.0 from the specification once v0.8.0 is under way; never
+   plan further ahead.
 
 ## After the major release
 
