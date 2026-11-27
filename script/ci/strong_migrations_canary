@@ -1,0 +1,138 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# DATA-05: a migration runs while the old code still serves requests, so
+# strong_migrations must reject an operation that blocks reads or writes.
+# This canary runs the fixture migrations in the test database and passes only
+# when strong_migrations rejects them. It fails on an empty fixture set, when
+# the fixture runs without a rejection, and when anything is left behind: a
+# table, a schema_migrations row or a changed db/structure.sql (TS-07).
+
+require "open3"
+require "rbconfig"
+
+RULE_ID = "DATA-05"
+ROOT = File.expand_path("../..", __dir__)
+FIXTURES = File.expand_path("fixtures/strong_migrations", __dir__)
+STRUCTURE = File.join(ROOT, "db", "structure.sql")
+RAILS = File.join(ROOT, "bin", "rails")
+GEMFILE = File.join(ROOT, "Gemfile")
+MIGRATION = /\A\d+_[a-z0-9_]+\.rb\z/
+REJECTED = "STRONG_MIGRATIONS_REJECTED"
+CLEAN = "STRONG_MIGRATIONS_CLEAN"
+
+def fail_rule(message)
+  warn "strong_migrations_canary: #{RULE_ID}: #{message}"
+  exit 1
+end
+
+def fixture_migrations
+  return [] unless Dir.exist?(FIXTURES)
+
+  Dir.children(FIXTURES).select { |entry| MIGRATION.match?(entry) }.sort
+end
+
+# Runs inside `bin/rails runner` with DB_ROLE=monova_migrator, where the
+# migrations can create a table. The ensure block removes the table and the
+# schema_migrations rows even when strong_migrations does not stop the run.
+def run_fixture
+  # strong_migrations reads Rake.application when it reports a rejection, and
+  # `bin/rails runner` boots without a Rake application.
+  require "rake"
+  Rake.application ||= Rake::Application.new
+
+  paths = ENV.fetch("STRONG_MIGRATIONS_FIXTURE")
+  versions = ENV.fetch("STRONG_MIGRATIONS_VERSIONS").split(",")
+  connection = ActiveRecord::Base.connection
+  quoted_versions = versions.map { |version| connection.quote(version) }.join(", ")
+
+  cleanup = lambda do
+    connection.execute("DROP TABLE IF EXISTS strong_migrations_canary CASCADE")
+    connection.execute("DELETE FROM schema_migrations WHERE version IN (#{quoted_versions})")
+  end
+
+  cleanup.call
+  rejected = false
+
+  begin
+    ActiveRecord::MigrationContext.new(paths).migrate
+  rescue StandardError => error
+    rejected = error.is_a?(StrongMigrations::UnsafeMigration) ||
+      error.message.include?("=== Dangerous operation detected #strong_migrations ===")
+    raise unless rejected
+
+    warn error.message
+  ensure
+    cleanup.call
+  end
+
+  unless rejected
+    warn "strong_migrations_canary: #{RULE_ID}: the fixture ran without a rejection"
+    exit 1
+  end
+
+  table = connection.select_value("SELECT to_regclass('public.strong_migrations_canary')")
+  versions_left = connection.select_values(
+    "SELECT version FROM schema_migrations WHERE version IN (#{quoted_versions})"
+  )
+
+  unless table.nil? && versions_left.empty?
+    warn "strong_migrations_canary: #{RULE_ID}: the fixture left a table or " \
+         "schema_migrations rows behind (table=#{table.inspect}, versions=#{versions_left.inspect})"
+    exit 1
+  end
+
+  puts REJECTED
+  puts CLEAN
+end
+
+def canary
+  migrations = fixture_migrations
+  fail_rule("no fixture migrations in #{FIXTURES}") if migrations.empty?
+
+  versions = migrations.map { |name| name[/\A\d+/] }
+  structure = File.binread(STRUCTURE)
+  output, status = Open3.capture2e(
+    {
+      "BUNDLE_GEMFILE" => GEMFILE,
+      "DB_ROLE" => "monova_migrator",
+      "RAILS_ENV" => "test",
+      "STRONG_MIGRATIONS_FIXTURE" => FIXTURES,
+      "STRONG_MIGRATIONS_VERSIONS" => versions.join(",")
+    },
+    RbConfig.ruby, RAILS, "runner", File.expand_path(__FILE__), "--run-fixture",
+    chdir: ROOT
+  )
+
+  if File.binread(STRUCTURE) != structure
+    File.binwrite(STRUCTURE, structure)
+    warn "strong_migrations_canary: #{RULE_ID}: the fixture changed db/structure.sql; restored it"
+    warn output
+    return 1
+  end
+
+  unless output.include?(REJECTED)
+    warn "strong_migrations_canary: #{RULE_ID}: strong_migrations did not reject the fixture " \
+         "(exit #{status.exitstatus})"
+    warn output
+    return 1
+  end
+
+  unless status.success? && output.include?(CLEAN)
+    warn "strong_migrations_canary: #{RULE_ID}: the fixture left a table or a " \
+         "schema_migrations row behind"
+    warn output
+    return 1
+  end
+
+  reason = output.lines.find { |line| line.include?("Dangerous operation detected") }
+  puts "ok: strong_migrations rejected the fixture (#{RULE_ID})#{": #{reason.strip}" if reason}"
+  puts "strong_migrations_canary: checked #{migrations.length} fixture migrations; failures=0"
+  0
+end
+
+if ARGV.delete("--run-fixture")
+  run_fixture
+else
+  exit(canary)
+end

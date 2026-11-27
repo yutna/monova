@@ -13,6 +13,10 @@ gem "solid_cache", "1.0.10"
 gem "solid_queue", "1.7.2"
 gem "solid_cable", "4.1.0"
 
+# Migrations: reject an operation that blocks reads or writes while the old
+# code still serves requests (DATA-05).
+gem "strong_migrations", "2.8.0"
+
 # Deployment: release this application as a Docker container.
 gem "kamal", "2.12.0", require: false
 

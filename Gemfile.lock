@@ -370,6 +370,8 @@ GEM
       net-sftp (>= 2.1.2)
       net-ssh (>= 2.8.0)
       ostruct
+    strong_migrations (2.8.0)
+      activerecord (>= 7.2)
     thor (1.5.0)
     thruster (0.1.28)
     thruster (0.1.28-aarch64-linux)
@@ -423,6 +425,7 @@ DEPENDENCIES
   solid_cable (= 4.1.0)
   solid_cache (= 1.0.10)
   solid_queue (= 1.7.2)
+  strong_migrations (= 2.8.0)
   thruster (= 0.1.28)
   tzinfo-data (= 1.2026.6)
   webmock (= 3.40.0)
@@ -556,6 +559,7 @@ CHECKSUMS
   solid_cache (1.0.10) sha256=bc05a2fb3ac78a6f43cbb5946679cf9db67dd30d22939ededc385cb93e120d41
   solid_queue (1.7.2) sha256=a22685e1d2ee14ce7b4e5d4592c9d8e837951884c51555609dee58679ed03325
   sshkit (1.25.1) sha256=be3f10b9d6eb0b44d5eaba3f7cbe41bc6bb894bce4339688ac20124391455b78
+  strong_migrations (2.8.0) sha256=cb9c0f8160e60f3e9c0e76098d57a6f61825b9618e8eb41cebbd1c1079874439
   thor (1.5.0) sha256=e3a9e55fe857e44859ce104a84675ab6e8cd59c650a49106a05f55f136425e73
   thruster (0.1.28) sha256=62672bb4588f49fa764f2e70db108a978818f8976f97ec3fd932d67c9e6b5e39
   thruster (0.1.28-aarch64-linux) sha256=74cfaab322198dd31c30265e82f092c13f651f24c257025f9d4d89b3f1c7c477

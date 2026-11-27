@@ -9,6 +9,7 @@ CI.run do
   step "Guards: Documentation canary", "script/docs/canary"
   step "Guards: PostgreSQL image", "script/ci/postgres_image_check"
   step "Guards: PostgreSQL image canary", "script/ci/postgres_image_check --canary"
+  step "Guards: strong_migrations canary", "script/ci/strong_migrations_canary"
 
   step "Guards: Packwerk package graph", "bin/packwerk validate"
   step "Guards: Packwerk dependencies", "script/ci/packwerk_check"
