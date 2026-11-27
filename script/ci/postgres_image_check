@@ -1,0 +1,159 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Checks that one PostgreSQL image reference is used by the Dev Container,
+# the CI service, script/dev/postgres and the Kamal accessory
+# (docs/architecture/09_observability_ops.md OPS-01 and OPS-07). The
+# --canary mode proves that making any one place differ fails and names the
+# rule and the file.
+
+require "open3"
+require "optparse"
+require "rbconfig"
+require "yaml"
+
+RULE_ID = "OPS-01"
+ROOT = File.expand_path("../..", __dir__)
+FIXTURES = File.expand_path("fixtures/postgres_image", __dir__)
+
+Place = Struct.new(:name, :file, :path, keyword_init: true)
+
+PLACES = [
+  Place.new(name: "Dev Container", file: ".devcontainer/compose.yaml", path: %w[services postgres image]),
+  Place.new(name: "CI service", file: ".github/workflows/ci.yml", path: %w[jobs test services postgres image]),
+  Place.new(name: "dev script", file: "script/dev/postgres", path: nil),
+  Place.new(name: "Kamal accessory", file: "config/deploy.yml", path: %w[accessories db image])
+].freeze
+
+# Fixture directory => the file expected to differ, or nil for the clean tree.
+FIXTURE_CASES = [
+  [ "clean", nil ],
+  [ "dev-container-differs", ".devcontainer/compose.yaml" ],
+  [ "ci-service-differs", ".github/workflows/ci.yml" ],
+  [ "dev-script-differs", "script/dev/postgres" ],
+  [ "kamal-accessory-differs", "config/deploy.yml" ]
+].freeze
+
+def fail_rule(message)
+  warn "postgres_image_check: #{RULE_ID}: #{message}"
+  exit 1
+end
+
+def yaml_image(path, name, key)
+  data = YAML.safe_load_file(path)
+  key.reduce(data) do |value, part|
+    return nil unless value.is_a?(Hash)
+
+    value[part]
+  end
+rescue Errno::ENOENT
+  fail_rule("#{name} is missing")
+rescue Psych::Exception => error
+  fail_rule("cannot parse #{name}: #{error.message}")
+end
+
+def shell_image(path, name)
+  line = File.readlines(path).find { |candidate| candidate.match?(/\A\s*IMAGE=/) }
+  return nil unless line
+
+  match = line.match(/\A\s*IMAGE=(?:"([^"]*)"|'([^']*)'|(\S+))/)
+  match && (match[1] || match[2] || match[3])
+rescue Errno::ENOENT
+  fail_rule("#{name} is missing")
+end
+
+def read_places(root)
+  PLACES.map do |place|
+    path = File.join(root, place.file)
+    image = place.path ? yaml_image(path, place.file, place.path) : shell_image(path, place.file)
+    fail_rule("#{place.file} has no PostgreSQL image") if image.nil? || image.empty?
+
+    [ place, image ]
+  end
+end
+
+def check(root)
+  entries = read_places(root)
+  # With four places and one wrong, the majority holds the expected reference.
+  reference = entries.map(&:last).tally.max_by { |_, count| count }.first
+  reference_place = entries.find { |_, image| image == reference }.first
+  failures = entries.reject { |_, image| image == reference }
+
+  entries.each do |place, image|
+    puts "postgres_image_check: #{place.file} (#{place.name}): #{image}"
+  end
+
+  failures.each do |place, image|
+    warn "postgres_image_check: #{RULE_ID}: #{place.file} uses #{image}, " \
+         "but #{reference_place.file} uses #{reference}"
+  end
+
+  if failures.empty?
+    puts "postgres_image_check: OK (#{entries.length} places use #{reference})"
+    0
+  else
+    warn "postgres_image_check: #{RULE_ID}: #{failures.length} of #{entries.length} places differ"
+    1
+  end
+end
+
+def run_check(root)
+  Open3.capture2e(RbConfig.ruby, File.expand_path(__FILE__), "--root", root)
+end
+
+def canary
+  fail_rule("no fixtures in #{FIXTURES}") unless Dir.exist?(FIXTURES)
+
+  checks = 0
+  failures = 0
+
+  FIXTURE_CASES.each do |name, differing_file|
+    root = File.join(FIXTURES, name)
+    fail_rule("fixture #{name} is missing") unless Dir.exist?(root)
+
+    checks += 1
+    output, status = run_check(root)
+
+    if differing_file.nil?
+      if status.success?
+        puts "ok: #{name} passes"
+      else
+        failures += 1
+        warn "postgres_image_check --canary: #{name} failed"
+        warn output
+      end
+      next
+    end
+
+    expected = "#{differing_file} uses"
+    detail = output.lines.find { |line| line.include?(RULE_ID) && line.include?(expected) }
+
+    if status.success?
+      failures += 1
+      warn "postgres_image_check --canary: #{name} passes but #{differing_file} differs"
+    elsif detail.nil?
+      failures += 1
+      warn "postgres_image_check --canary: #{name} does not name #{RULE_ID} and #{differing_file}"
+      warn output
+    else
+      puts "ok: #{name} fails (#{detail.strip})"
+    end
+  end
+
+  if failures.positive?
+    warn "postgres_image_check --canary: checked #{checks} fixtures; failures=#{failures}"
+    return 1
+  end
+
+  puts "postgres_image_check --canary: checked #{checks} fixtures; failures=0"
+  0
+end
+
+options = { root: ROOT, canary: false }
+OptionParser.new do |parser|
+  parser.banner = "Usage: postgres_image_check [--root DIR] [--canary]"
+  parser.on("--root DIR", "Repository root to check") { |value| options[:root] = File.expand_path(value) }
+  parser.on("--canary", "Prove every fixture with a differing place fails") { options[:canary] = true }
+end.parse!
+
+exit(options[:canary] ? canary : check(options[:root]))

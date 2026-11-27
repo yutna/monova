@@ -229,6 +229,12 @@ jobs:
       - name: Documentation check canary
         run: script/docs/canary
 
+      - name: PostgreSQL image check
+        run: script/ci/postgres_image_check
+
+      - name: PostgreSQL image check canary
+        run: script/ci/postgres_image_check --canary
+
       - name: OpenCode policy check
         run: script/ci/opencode_policy_check
 
