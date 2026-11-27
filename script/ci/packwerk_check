@@ -1,0 +1,68 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# ARCH-04: every dependency is declared and the graph has no cycle. The
+# check runs bin/packwerk check with its output passed through, and fails
+# when Packwerk reports no inspected file count or a count of 0: a wrong
+# include: glob would otherwise pass by checking nothing (TS-07).
+
+require "open3"
+require "optparse"
+require "rbconfig"
+
+RULE_ID = "ARCH-04"
+ROOT = File.expand_path("../..", __dir__)
+PACKWERK = File.join(ROOT, "bin", "packwerk")
+GEMFILE = File.join(ROOT, "Gemfile")
+INSPECTED = /Packwerk is inspecting (\d+) files/
+ANSI = /\e\[[0-9;]*m/
+
+def fail_rule(message)
+  warn "packwerk_check: #{RULE_ID}: #{message}"
+  exit 1
+end
+
+# Runs the check under the given root and prints its output as it arrives,
+# so the step reads like bin/packwerk check in the CI log.
+def run_packwerk(root)
+  output = +""
+  status = nil
+
+  Open3.popen2e({ "BUNDLE_GEMFILE" => GEMFILE }, RbConfig.ruby, PACKWERK, "check", chdir: root) do |stdin, stream, wait|
+    stdin.close
+    stream.each_line do |line|
+      $stdout.write(line)
+      $stdout.flush
+      output << line
+    end
+    status = wait.value
+  end
+
+  [ output, status ]
+end
+
+def inspected_files(output)
+  match = INSPECTED.match(output.gsub(ANSI, ""))
+  match[1].to_i if match
+end
+
+def check(root)
+  output, status = run_packwerk(root)
+  inspected = inspected_files(output)
+
+  fail_rule("Packwerk did not report how many files it inspected") if inspected.nil?
+  fail_rule("Packwerk inspected 0 files; a wrong include: glob passes by checking nothing") if inspected.zero?
+
+  puts "packwerk_check: #{RULE_ID}: inspected #{inspected} files"
+  return 0 if status.success?
+
+  status.exitstatus || 1
+end
+
+options = { root: ROOT }
+OptionParser.new do |parser|
+  parser.banner = "Usage: packwerk_check [--root DIR]"
+  parser.on("--root DIR", "Repository root to check") { |value| options[:root] = File.expand_path(value) }
+end.parse!
+
+exit(check(options[:root]))
