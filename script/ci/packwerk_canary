@@ -27,11 +27,14 @@ VIOLATIONS = [ "Dependency violation", "Privacy violation", "Layer violation" ].
 # fixture: the case directory added to the shared base fixture.
 # label: the name shown in the output.
 # must_fail: true when the command must report the violation and exit 1.
-Case = Struct.new(:fixture, :label, :rule, :command, :violation, :must_fail, keyword_init: true)
+# must_include: text the output must contain when the case must pass.
+Case = Struct.new(:fixture, :label, :rule, :command, :violation, :must_fail, :must_include, keyword_init: true)
 
 CASES = [
   Case.new(fixture: "clean", label: "clean check", rule: nil, command: "check", violation: nil, must_fail: false),
   Case.new(fixture: "clean", label: "clean validate", rule: nil, command: "validate", violation: nil, must_fail: false),
+  Case.new(fixture: "one-file", label: "one file", rule: nil, command: "check", violation: nil, must_fail: false,
+    must_include: "inspected 1 files"),
   Case.new(fixture: "empty-include", label: "empty include", rule: "ARCH-04", command: "check",
     violation: "ARCH-04: Packwerk inspected 0 files", must_fail: true),
   Case.new(fixture: "dependency", label: "dependency", rule: "ARCH-04", command: "check",
@@ -120,12 +123,17 @@ CASES.each do |test_case|
       puts "ok: #{test_case.label}#{rule_suffix(test_case)} fails #{test_case.command} " \
            "with #{test_case.violation.inspect}"
     end
-  elsif status.success?
-    puts "ok: #{test_case.label} passes #{test_case.command}"
-  else
+  elsif !status.success?
     failures += 1
     warn "#{prefix} failed but must pass"
     warn output
+  elsif test_case.must_include && !output.include?(test_case.must_include)
+    failures += 1
+    warn "#{prefix} passed without #{test_case.must_include.inspect}"
+    warn output
+  else
+    detail = test_case.must_include ? " with #{test_case.must_include.inspect}" : ""
+    puts "ok: #{test_case.label} passes #{test_case.command}#{detail}"
   end
 end
 
