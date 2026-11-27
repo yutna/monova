@@ -192,6 +192,10 @@ roles, not that build's loop, are what carry over:
 - The implementer's tool is fenced by its own permission settings, so
   it cannot push to `main` or merge. The `main` ruleset (WF-03) holds
   whatever the settings miss.
+- A hook in the lead's tool is a fence, not a guard. A local settings
+  file that is not committed (Claude Code's
+  `.claude/settings.local.json`) can turn hooks off or override them,
+  and CI cannot see it, so the review still checks every diff.
 - A review names the failed criterion and its evidence, never code to
   paste, so the implementer fixes the cause.
 - Each pull request records the session, its model and its cost, so the

@@ -38,18 +38,22 @@ decision, never in the pull request that would profit from it.
 
 ### Today
 
-The template ships no engines, no RSpec suite and no kernel yet, so
-every rule below except WF-03 is `review` today. The tools CI runs now
-are:
+The template ships no engines and no kernel yet, and its RSpec suite
+covers only the health check, so every rule below except WF-03 is
+`review` today. The tools CI runs now are:
 
 | Tool | Checks | Canary |
 | --- | --- | --- |
 | RuboCop (Rails omakase) | Ruby style | none |
 | Brakeman `--exit-on-warn` | Code security warnings (SEC-08) | none |
 | `bundler-audit` | Gems with known advisories (SEC-08) | none |
+| RSpec (`bin/rspec`) | The application's specs | none |
+| `db:seed:replant` (test) | Seeds load on an empty database | none |
 | `markdownlint-cli2` | Markdown, default rules | none |
 | `npm run docs:check` | Rule IDs, ADR citations, line budgets | yes |
 | actionlint (GitHub CI) | Workflow files | none |
+| ShellCheck (GitHub CI) | Shell scripts | none |
+| `script/loop/test` | The loop driver of the template's build | none |
 | `script/ci/ruleset_check` (GitHub CI) | The `main` ruleset (WF-03) | yes |
 
 The process guards of the template's own build (the lead guard and the
@@ -333,14 +337,18 @@ the reviewer says so and reads it as one (`docs/development/protocol.md`
 
 ## The gate
 
-`bin/ci` is the gate for every pull request, in the Dev Container and in
-GitHub CI alike (OPS-01). A pull request merges only when it is green.
+`bin/ci` is the gate for every pull request (WF-02); GitHub CI runs the
+same steps as parallel jobs, and the `ci-ok` check decides the merge.
+A few tools need GitHub and run only there: actionlint, ShellCheck and
+the live `ruleset_check`. The Dev Container (OPS-01) is not built yet,
+so `bin/ci` runs on the host. A pull request merges only when it is
+green.
 
 Before a release, a reviewer who did not write the changes audits the
 milestone:
 
-1. Every row marked `enforced` has its tool in `bin/ci` and a canary
-   that fails without it.
+1. Every row marked `enforced` has its tool in `bin/ci` or GitHub CI
+   and a canary that fails without it.
 2. Every row marked `kernel` has a core spec that proves it.
 3. No row is stronger than what is on `main`.
 4. `bin/ci` passes on a clean checkout.

@@ -36,7 +36,7 @@ disagree, follow the project and say so in the pull request.
 ```sh
 bin/setup --skip-server   # install gems, prepare the database
 bin/ci                    # the gate: style, security, tests, lint
-bin/rails test            # tests only
+bin/rspec                 # tests only
 ```
 
 The API architecture is still being specified. Do not add layers,

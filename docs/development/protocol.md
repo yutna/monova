@@ -164,6 +164,9 @@ The OpenCode policies cover the edit and read tools and the listed shell
 commands; a shell redirect can still write a file, so the review checks
 that the diff touches only allowed paths. Every guard marked enforced has
 a canary that proves it fails when it should.
+The `lead_guard` hook runs only while the project settings are in
+effect: an uncommitted `.claude/settings.local.json` can turn it off,
+and CI cannot see that file, so the gate still reads the lead's diffs.
 The `main` ruleset lives in GitHub; `script/ci/ruleset_check` reads it
 in CI and fails when it drifts, and its `--canary` mode is the canary.
 

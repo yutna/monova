@@ -97,6 +97,9 @@ The specification stays short enough to read in one sitting.
 | `12_enforcement.md`, `13_decisions.md` | 600 lines |
 | All files in `docs/architecture/` together | 4,500 lines |
 
+`lessons-learned.md` keeps the 400-line budget of a topic file but does
+not count toward the total, so recording a lesson never turns CI red.
+
 ## Enforcement statuses
 
 `12_enforcement.md` lists every rule with one of three statuses:
@@ -181,10 +184,11 @@ These files name no version for a library; `Gemfile.lock` and
 
 Adopters work in a Dev Container: PostgreSQL runs as a service from an
 image pinned by version and digest, and Ruby and Node are installed from
-`mise.toml`. `bin/ci` runs the same steps inside the container and in
-GitHub CI, and a CI job rebuilds the container and runs `bin/ci` in it
-whenever a pin file changes, so the container cannot drift
-(`09_observability_ops.md`).
+`mise.toml`. `bin/ci` runs inside the container, GitHub CI runs the same
+steps as parallel jobs (WF-02), and a CI job rebuilds the container and
+runs `bin/ci` in it whenever a pin file changes, so the container cannot
+drift (`09_observability_ops.md`). This is target state: the template
+has no `.devcontainer/` yet, and `bin/ci` runs on the host.
 
 ## Adopting Monova
 
