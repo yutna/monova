@@ -8,6 +8,7 @@
 require "fileutils"
 require "json"
 require "open3"
+require "shellwords"
 require "tmpdir"
 
 root = File.expand_path("../..", __dir__)
@@ -22,6 +23,10 @@ end
 
 def file_tool(name, tool, path, expected, env: {})
   Case.new(name: name, tool: tool, input: { "file_path" => path }, env: env, expected: expected)
+end
+
+def notebook(name, path, expected, env: {})
+  Case.new(name: name, tool: "NotebookEdit", input: { "notebook_path" => path }, env: env, expected: expected)
 end
 
 def bash(name, command, expected)
@@ -40,9 +45,37 @@ rescue RegexpError
   false
 end
 
+# True when a hook command runs lead_guard itself: the script path alone,
+# optionally written against the project directory variable. A command that
+# only names the path, such as `echo` or `cat`, does not run it.
+def lead_guard_command?(command, root)
+  words = Shellwords.split(command.to_s)
+  return false unless words.length == 1
+
+  token = words.first.sub(/\A\$(?:\{CLAUDE_PROJECT_DIR\}|CLAUDE_PROJECT_DIR)\//) { "#{root}/" }
+  File.expand_path(token, root) == File.join(root, ".claude", "hooks", "lead_guard")
+rescue ArgumentError
+  false
+end
+
+# Replaces the command of every hook that runs lead_guard.
+def with_lead_guard_command(data, root, command)
+  Array(data.dig("hooks", "PreToolUse")).each do |entry|
+    next unless entry.is_a?(Hash)
+
+    Array(entry["hooks"]).each do |hook|
+      next unless hook.is_a?(Hash) && hook["type"] == "command"
+      next unless lead_guard_command?(hook["command"], root)
+
+      hook["command"] = command
+    end
+  end
+  data
+end
+
 # Returns the reasons .claude/settings.json does not register lead_guard,
 # or an empty array when it does.
-def wiring_errors(settings_path)
+def wiring_errors(settings_path, root)
   return [ "#{settings_path} is missing" ] unless File.file?(settings_path)
 
   data = begin
@@ -62,7 +95,7 @@ def wiring_errors(settings_path)
 
     commands = Array(entry["hooks"]).select do |hook|
       hook.is_a?(Hash) && hook["type"] == "command" &&
-        hook["command"].to_s.include?(".claude/hooks/lead_guard")
+        lead_guard_command?(hook["command"], root)
     end
     entry["matcher"] unless commands.empty?
   end
@@ -92,6 +125,8 @@ Dir.mktmpdir("monova-lead-guard-worktrees") do |worktrees|
       file_tool("Write a file outside the repository", "Write",
                 File.join(outside, "x.rb"), 0),
       file_tool("MultiEdit an implementation file", "MultiEdit", "app/models/x.rb", 2),
+      notebook("NotebookEdit an implementation notebook", "app/models/x.ipynb", 2),
+      notebook("NotebookEdit a development document", "docs/development/x.ipynb", 0),
       bash("redirect into an implementation path", "echo hi > app/x.rb", 2),
       bash("redirect without a space", "echo hi >app/x.rb", 2),
       bash("append to a dependency file", "cat a >> Gemfile", 2),
@@ -110,7 +145,23 @@ Dir.mktmpdir("monova-lead-guard-worktrees") do |worktrees|
       bash("edit outside the repository before the gate",
            "sed -i s/a/b/ /tmp/plan.md; bin/ci", 0),
       bash("copy into an implementation path after a no-op",
-           "true && cp x lib/y.rb", 2)
+           "true && cp x lib/y.rb", 2),
+      bash("redirect into an implementation path outside the repository",
+           "echo hi > #{File.join(outside, "app/x.rb")}", 0),
+      bash("copy a source file to a target outside the repository",
+           "cp script/x #{File.join(outside, "y")}", 0),
+      bash("copy into an implementation directory with -t", "cp -t lib/ x", 2),
+      bash("copy to a bare implementation directory", "cp x lib", 2),
+      bash("move an implementation file outside the repository",
+           "mv app/x #{File.join(outside, "y")}", 2),
+      bash("redirect into a path that leaves and re-enters the repository",
+           "echo hi > #{File.join(root, "..", File.basename(root), "app/x.rb")}", 2),
+      bash("copy to an implementation file before a redirect",
+           "cp x app/y.rb 2>/dev/null", 2),
+      bash("copy to an implementation file before an option",
+           "cp x app/y.rb -v", 2),
+      bash("link into an implementation path before a comment",
+           "ln -s x bin/y #note", 2)
     ]
 
     cases.each do |test_case|
@@ -143,7 +194,7 @@ wiring_failures = 0
 settings = File.join(root, ".claude", "settings.json")
 
 wiring_checks += 1
-errors = wiring_errors(settings)
+errors = wiring_errors(settings, root)
 if errors.empty?
   puts "ok: lead_guard is a PreToolUse command hook for #{WIRING_TOOLS.join("|")}"
 else
@@ -165,7 +216,7 @@ Dir.mktmpdir("monova-lead-guard-settings") do |settings_dir|
     next unless entry.is_a?(Hash)
 
     entry["hooks"] = Array(entry["hooks"]).reject do |hook|
-      hook.is_a?(Hash) && hook["command"].to_s.include?(".claude/hooks/lead_guard")
+      hook.is_a?(Hash) && lead_guard_command?(hook["command"], root)
     end
   end
   settings_cases << [ "a copy without the lead_guard entry fails", without_entry, true ]
@@ -179,7 +230,7 @@ Dir.mktmpdir("monova-lead-guard-settings") do |settings_dir|
     Array(copy.dig("hooks", "PreToolUse")).each do |entry|
       next unless entry.is_a?(Hash)
       next unless Array(entry["hooks"]).any? do |hook|
-        hook.is_a?(Hash) && hook["command"].to_s.include?(".claude/hooks/lead_guard")
+        hook.is_a?(Hash) && lead_guard_command?(hook["command"], root)
       end
 
       entry["matcher"] = (WIRING_TOOLS - [ dropped ]).join("|")
@@ -187,11 +238,32 @@ Dir.mktmpdir("monova-lead-guard-settings") do |settings_dir|
     settings_cases << [ "a copy whose matcher drops #{dropped} fails", copy, true ]
   end
 
+  echo_lookalike = with_lead_guard_command(
+    Marshal.load(Marshal.dump(source_settings)),
+    root,
+    'echo "$CLAUDE_PROJECT_DIR"/.claude/hooks/lead_guard'
+  )
+  settings_cases << [ "a copy whose look-alike command only echoes the path fails", echo_lookalike, true ]
+
+  cat_lookalike = with_lead_guard_command(
+    Marshal.load(Marshal.dump(source_settings)),
+    root,
+    'cat "$CLAUDE_PROJECT_DIR"/.claude/hooks/lead_guard'
+  )
+  settings_cases << [ "a copy whose look-alike command only reads the path fails", cat_lookalike, true ]
+
+  bare_path = with_lead_guard_command(
+    Marshal.load(Marshal.dump(source_settings)),
+    root,
+    ".claude/hooks/lead_guard"
+  )
+  settings_cases << [ "a copy whose command is the bare script path passes", bare_path, false ]
+
   settings_cases.each do |name, data, should_fail|
     wiring_checks += 1
     copy_path = File.join(settings_dir, "settings.json")
     File.write(copy_path, JSON.pretty_generate(data))
-    copy_errors = wiring_errors(copy_path)
+    copy_errors = wiring_errors(copy_path, root)
 
     if copy_errors.empty? == !should_fail
       puts "ok: #{name}"
