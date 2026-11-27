@@ -1,0 +1,323 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Create the PostgreSQL roles of DATA-01 with their attributes, memberships and
+# grants, and the development and test databases (DATA-02).
+#
+# The script runs as a PostgreSQL superuser, taken from the PG* environment
+# variables. It is safe to run again: it creates what is missing, resets a role
+# that drifted to the DATA-01 attributes, and leaves everything else alone.
+
+require "bundler/setup"
+require "pg"
+
+ROLES = {
+  "monova_migrator" => {
+    login: true,
+    createdb: true,
+    bypassrls: true,
+    password_env: "MONOVA_MIGRATOR_PASSWORD",
+    default_password: "monova_migrator"
+  },
+  "monova_app" => {
+    login: true,
+    createdb: false,
+    bypassrls: false,
+    password_env: "MONOVA_APP_PASSWORD",
+    default_password: "monova_app"
+  },
+  "monova_auth" => { login: false, createdb: false, bypassrls: false },
+  "monova_purge" => { login: false, createdb: false, bypassrls: false },
+  "monova_backup" => {
+    login: true,
+    createdb: false,
+    bypassrls: true,
+    password_env: "MONOVA_BACKUP_PASSWORD",
+    default_password: "monova_backup"
+  }
+}.freeze
+
+# [granted role, member]
+MEMBERSHIPS = [
+  [ "monova_auth", "monova_migrator" ],
+  [ "monova_purge", "monova_migrator" ],
+  [ "pg_read_all_data", "monova_backup" ]
+].freeze
+
+DATABASES = %w[
+  monova_development
+  monova_development_cache
+  monova_development_queue
+  monova_development_cable
+  monova_test
+  monova_test_cache
+  monova_test_queue
+  monova_test_cable
+].freeze
+
+GRANTS = [
+  "GRANT USAGE ON SCHEMA public TO monova_app",
+  "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO monova_app",
+  "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO monova_app",
+  "ALTER DEFAULT PRIVILEGES FOR ROLE monova_migrator IN SCHEMA public " \
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO monova_app",
+  "ALTER DEFAULT PRIVILEGES FOR ROLE monova_migrator IN SCHEMA public " \
+    "GRANT USAGE, SELECT ON SEQUENCES TO monova_app"
+].freeze
+
+def environment
+  ENV.fetch("RAILS_ENV") { ENV.fetch("RACK_ENV", "development") }
+end
+
+def connect(database = "postgres")
+  PG.connect(
+    host: ENV.fetch("PGHOST", "127.0.0.1"),
+    port: ENV.fetch("PGPORT", "5433"),
+    dbname: database,
+    user: ENV.fetch("PGUSER", "postgres"),
+    password: ENV.fetch("PGPASSWORD", "postgres")
+  )
+end
+
+def password_for(name, config)
+  variable = config[:password_env]
+  return nil unless variable
+
+  password = ENV[variable].to_s
+  return password unless password.empty?
+
+  if environment == "production"
+    abort "#{variable} must be set in production, so #{name} has a password"
+  end
+
+  config[:default_password]
+end
+
+def password_rotated?(config)
+  config[:password_env] && !ENV[config[:password_env]].to_s.empty?
+end
+
+def attributes_sql(config)
+  [
+    config[:login] ? "LOGIN" : "NOLOGIN",
+    "NOSUPERUSER",
+    config[:createdb] ? "CREATEDB" : "NOCREATEDB",
+    "NOCREATEROLE",
+    config[:bypassrls] ? "BYPASSRLS" : "NOBYPASSRLS"
+  ].join(" ")
+end
+
+def current_attributes(connection, name)
+  connection.exec_params(<<~SQL, [ name ]).first
+    SELECT rolsuper, rolbypassrls, rolcanlogin, rolcreatedb
+    FROM pg_roles
+    WHERE rolname = $1
+  SQL
+end
+
+def attributes_match?(row, config)
+  row["rolsuper"] == "f" &&
+    (row["rolbypassrls"] == "t") == config[:bypassrls] &&
+    (row["rolcanlogin"] == "t") == config[:login] &&
+    (row["rolcreatedb"] == "t") == config[:createdb]
+end
+
+def create_or_reset_roles(connection, changes)
+  ROLES.each do |name, config|
+    role = connection.quote_ident(name)
+    password = password_for(name, config)
+    password_sql = password ? " PASSWORD #{connection.escape_literal(password)}" : ""
+    row = current_attributes(connection, name)
+
+    if row.nil?
+      connection.exec("CREATE ROLE #{role} WITH #{attributes_sql(config)}#{password_sql}")
+      changes << "created role #{name}"
+    elsif !attributes_match?(row, config)
+      connection.exec("ALTER ROLE #{role} WITH #{attributes_sql(config)}#{password_sql}")
+      changes << "reset the attributes of role #{name}"
+    elsif password_rotated?(config)
+      connection.exec("ALTER ROLE #{role} WITH PASSWORD #{connection.escape_literal(password)}")
+      changes << "set the password of role #{name} from #{config[:password_env]}"
+    end
+  end
+end
+
+def grant_memberships(connection, changes)
+  MEMBERSHIPS.each do |granted, member|
+    existing = connection.exec_params(<<~SQL, [ granted, member ]).ntuples
+      SELECT 1
+      FROM pg_auth_members membership
+      JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
+      JOIN pg_roles member_role ON member_role.oid = membership.member
+      WHERE granted_role.rolname = $1 AND member_role.rolname = $2
+    SQL
+    next unless existing.zero?
+
+    connection.exec("GRANT #{connection.quote_ident(granted)} TO #{connection.quote_ident(member)}")
+    changes << "granted #{granted} to #{member}"
+  end
+end
+
+def create_or_own_databases(connection, changes)
+  DATABASES.each do |name|
+    row = connection.exec_params(<<~SQL, [ name ]).first
+      SELECT pg_get_userbyid(datdba) AS owner
+      FROM pg_database
+      WHERE datname = $1
+    SQL
+
+    if row.nil?
+      connection.exec("CREATE DATABASE #{connection.quote_ident(name)} OWNER monova_migrator")
+      changes << "created database #{name}"
+    elsif row["owner"] != "monova_migrator"
+      connection.exec("ALTER DATABASE #{connection.quote_ident(name)} OWNER TO monova_migrator")
+      changes << "gave monova_migrator the database #{name}"
+    end
+  end
+end
+
+def has_schema_usage?(connection)
+  connection.exec_params("SELECT has_schema_privilege('monova_app', 'public', 'USAGE')").getvalue(0, 0) == "t"
+end
+
+def tables_need_grants?(connection)
+  connection.exec_params(<<~SQL).getvalue(0, 0) == "t"
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_tables
+      WHERE schemaname = 'public'
+        AND NOT (
+          has_table_privilege('monova_app', format('%I.%I', schemaname, tablename), 'SELECT') AND
+          has_table_privilege('monova_app', format('%I.%I', schemaname, tablename), 'INSERT') AND
+          has_table_privilege('monova_app', format('%I.%I', schemaname, tablename), 'UPDATE') AND
+          has_table_privilege('monova_app', format('%I.%I', schemaname, tablename), 'DELETE')
+        )
+    )
+  SQL
+end
+
+def sequences_need_grants?(connection)
+  connection.exec_params(<<~SQL).getvalue(0, 0) == "t"
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_class sequence
+      JOIN pg_namespace namespace ON namespace.oid = sequence.relnamespace
+      WHERE namespace.nspname = 'public'
+        AND sequence.relkind = 'S'
+        AND NOT (
+          has_sequence_privilege('monova_app', sequence.oid, 'USAGE') AND
+          has_sequence_privilege('monova_app', sequence.oid, 'SELECT')
+        )
+    )
+  SQL
+end
+
+def default_privileges?(connection, object_type, privileges)
+  placeholders = privileges.each_index.map { |index| "$#{index + 2}" }.join(", ")
+  connection.exec_params(<<~SQL, [ object_type, *privileges ]).getvalue(0, 0) == "t"
+    SELECT count(DISTINCT acl.privilege_type) = #{privileges.length}
+    FROM pg_default_acl defaults
+    JOIN pg_roles owner ON owner.oid = defaults.defaclrole
+    JOIN pg_namespace namespace ON namespace.oid = defaults.defaclnamespace,
+    LATERAL aclexplode(defaults.defaclacl) acl
+    JOIN pg_roles grantee ON grantee.oid = acl.grantee
+    WHERE owner.rolname = 'monova_migrator'
+      AND namespace.nspname = 'public'
+      AND defaults.defaclobjtype = $1
+      AND grantee.rolname = 'monova_app'
+      AND acl.privilege_type IN (#{placeholders})
+  SQL
+end
+
+OBJECT_KEYWORDS = {
+  "r" => "TABLE",
+  "p" => "TABLE",
+  "S" => "SEQUENCE",
+  "v" => "VIEW",
+  "m" => "MATERIALIZED VIEW",
+  "f" => "FOREIGN TABLE"
+}.freeze
+
+def give_objects_to_migrator(connection, database, changes)
+  objects = connection.exec(<<~SQL)
+    SELECT class.relkind, format('%I.%I', namespace.nspname, class.relname) AS name
+    FROM pg_class class
+    JOIN pg_namespace namespace ON namespace.oid = class.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND class.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
+      AND pg_get_userbyid(class.relowner) <> 'monova_migrator'
+      AND (
+        class.relkind <> 'S' OR NOT EXISTS (
+          SELECT 1
+          FROM pg_depend dependency
+          WHERE dependency.classid = 'pg_class'::regclass
+            AND dependency.objid = class.oid
+            AND dependency.deptype IN ('a', 'i')
+        )
+      )
+    ORDER BY class.relkind, class.relname
+  SQL
+
+  objects.each do |object|
+    keyword = OBJECT_KEYWORDS.fetch(object["relkind"])
+    connection.exec("ALTER #{keyword} #{object["name"]} OWNER TO monova_migrator")
+  end
+
+  return if objects.ntuples.zero?
+
+  changes << "gave monova_migrator #{objects.ntuples} existing object(s) in #{database}"
+end
+
+def apply_grants(connection, database, changes)
+  own_schema = connection.exec_params(
+    "SELECT has_schema_privilege('monova_migrator', 'public', 'CREATE')"
+  ).getvalue(0, 0)
+
+  if own_schema != "t"
+    connection.exec("ALTER SCHEMA public OWNER TO monova_migrator")
+    changes << "gave monova_migrator the public schema of #{database}"
+  end
+
+  give_objects_to_migrator(connection, database, changes)
+
+  missing = []
+  missing << "schema usage" unless has_schema_usage?(connection)
+  missing << "table privileges" if tables_need_grants?(connection)
+  missing << "sequence privileges" if sequences_need_grants?(connection)
+  missing << "default table privileges" unless default_privileges?(connection, "r", %w[SELECT INSERT UPDATE DELETE])
+  missing << "default sequence privileges" unless default_privileges?(connection, "S", %w[USAGE SELECT])
+  return if missing.empty?
+
+  GRANTS.each { |statement| connection.exec(statement) }
+  changes << "granted #{missing.join(', ')} in #{database}"
+end
+
+def run
+  changes = []
+  admin = connect
+
+  begin
+    create_or_reset_roles(admin, changes)
+    grant_memberships(admin, changes)
+    create_or_own_databases(admin, changes)
+  ensure
+    admin.close
+  end
+
+  DATABASES.each do |database|
+    connection = connect(database)
+    begin
+      apply_grants(connection, database, changes)
+    ensure
+      connection.close
+    end
+  end
+
+  if changes.empty?
+    puts "No changes."
+  else
+    changes.each { |change| puts change }
+  end
+end
+
+run if $PROGRAM_NAME == __FILE__

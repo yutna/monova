@@ -1,8 +1,41 @@
 # PostgreSQL for the primary database and for the Solid Cache, Solid Queue and
 # Solid Cable databases (ADR-04, DATA-04).
 #
-# Development and test talk to the container started by script/dev/postgres.
-# Production reads every connection setting from the environment only.
+# Database tasks that start with `db:` connect as `monova_migrator`, which owns
+# the schema and the tables. The application, the console and the specs connect
+# as `monova_app`, which owns nothing (DATA-01, DATA-02, TS-03). Set `DB_ROLE`
+# to override the choice, for example for a one-off backfill.
+#
+# Development and test talk to the container started by script/dev/postgres and
+# get fixed, non-secret passwords. Production reads every connection setting
+# from the environment and requires the role passwords.
+
+<%
+  # A rake command has already consumed ARGV, so ask Rake which tasks are
+  # running. `bin/rails runner`, the console and `bin/rspec` run no `db:` task.
+  rake_tasks = if defined?(Rake) && Rake.respond_to?(:application)
+    Array(Rake.application&.top_level_tasks)
+  else
+    []
+  end
+  database_task = rake_tasks.any? { |task| task.to_s.start_with?("db:") } ||
+    ARGV.first.to_s.start_with?("db:")
+
+  role = ENV["DB_ROLE"].to_s.strip
+  role = database_task ? "monova_migrator" : "monova_app" if role.empty?
+
+  role_password = {
+    "monova_migrator" => ["MONOVA_MIGRATOR_PASSWORD", "monova_migrator"],
+    "monova_app" => ["MONOVA_APP_PASSWORD", "monova_app"],
+    "monova_backup" => ["MONOVA_BACKUP_PASSWORD", "monova_backup"]
+  }.fetch(role) do
+    raise "Unknown DB_ROLE #{role.inspect}; use monova_migrator, monova_app or monova_backup"
+  end
+
+  password = ENV[role_password[0]].to_s
+  password = role_password[1] if password.empty? && !Rails.env.production?
+  raise "#{role_password[0]} must be set in production" if password.empty?
+%>
 
 default: &default
   adapter: postgresql
@@ -10,8 +43,8 @@ default: &default
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
   host: <%= ENV.fetch("PGHOST", "127.0.0.1") %>
   port: <%= ENV.fetch("PGPORT", 5433) %>
-  username: <%= ENV.fetch("PGUSER", "postgres") %>
-  password: <%= ENV.fetch("PGPASSWORD", "postgres") %>
+  username: <%= role %>
+  password: <%= password.inspect %>
 
 development:
   primary:
@@ -52,8 +85,6 @@ production:
     <<: *default
     host: <%= Rails.env.production? ? ENV.fetch("PGHOST") : "127.0.0.1" %>
     port: <%= Rails.env.production? ? ENV.fetch("PGPORT") : 5433 %>
-    username: <%= Rails.env.production? ? ENV.fetch("PGUSER") : "postgres" %>
-    password: <%= Rails.env.production? ? ENV.fetch("PGPASSWORD") : "postgres" %>
     database: <%= ENV.fetch("PGDATABASE", "monova_production") %>
   cache:
     <<: *production

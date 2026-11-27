@@ -57,8 +57,9 @@ script/dev/postgres
 bin/setup --skip-server
 ```
 
-Docker starts the container. `psql` 18 from the client tools loads
-`db/structure.sql` into the development and test databases.
+Docker starts the container. `bin/setup` creates the five database roles and
+the development and test databases with `bin/db-roles`, then `psql` 18 from the
+client tools loads `db/structure.sql` into the development and test databases.
 
 Start the server:
 
@@ -70,9 +71,14 @@ Open <http://localhost:3000/up>. The template has no application-specific
 routes yet; `/up` is the health check used by load balancers and uptime
 monitors.
 
-Development and test connect to `127.0.0.1:5433` as `postgres`. Override the
-connection with `PGHOST`, `PGPORT`, `PGUSER` and `PGPASSWORD`; production reads
-those variables only.
+Development and test connect to `127.0.0.1:5433`. Database tasks such as
+`bin/rails db:prepare` and `bin/rails db:migrate` connect as
+`monova_migrator`; the application, the console and `bin/rspec` connect as
+`monova_app`, so row-level security binds them (DATA-01, TS-03). Override the
+connection with `PGHOST` and `PGPORT`, and the role choice with `DB_ROLE`.
+Production reads the connection from the environment and requires
+`MONOVA_MIGRATOR_PASSWORD`, `MONOVA_APP_PASSWORD` and
+`MONOVA_BACKUP_PASSWORD`.
 
 ## Credentials
 
@@ -110,9 +116,10 @@ the Rails application does not depend on OpenCode.
 
 The production image uses the included Dockerfile and Thruster. Kamal
 configuration lives in `config/deploy.yml`. Production connects to PostgreSQL
-from `PGHOST`, `PGPORT`, `PGUSER` and `PGPASSWORD`; set those and
-`RAILS_MASTER_KEY` in the deployment environment before starting the
-application.
+from `PGHOST`, `PGPORT` and `PGDATABASE`, with the role passwords in
+`MONOVA_MIGRATOR_PASSWORD`, `MONOVA_APP_PASSWORD` and
+`MONOVA_BACKUP_PASSWORD`; set those and `RAILS_MASTER_KEY` in the deployment
+environment before starting the application.
 
 ## Project structure
 
