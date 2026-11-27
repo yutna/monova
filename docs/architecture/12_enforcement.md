@@ -38,9 +38,11 @@ decision, never in the pull request that would profit from it.
 
 ### Today
 
-The template ships no engines and no kernel yet; its RSpec suite covers
-the health check and the database roles (DATA-01), so every rule below
-except WF-03 is `review` today. The tools CI runs now are:
+The template ships the kernel engine `core` and no domain or product
+engine yet; its RSpec suite covers the health check, the database roles
+(DATA-01) and the engine. Packwerk enforces the package graph, so
+ARCH-02, ARCH-04, ARCH-05, ARCH-06 and WF-03 are `enforced` and every
+other rule below is `review` today. The tools CI runs now are:
 
 | Tool | Checks | Canary |
 | --- | --- | --- |
@@ -56,6 +58,9 @@ except WF-03 is `review` today. The tools CI runs now are:
 | `script/loop/test` | The loop driver of the template's build | none |
 | `script/ci/ruleset_check` (GitHub CI) | The `main` ruleset (WF-03) | yes |
 | `script/ci/postgres_image_check` | One PostgreSQL pin (OPS-01) | yes |
+| `bin/packwerk validate` | Package graph, no cycle (ARCH-04) | yes |
+| `bin/packwerk check` | Dependency, privacy, layer (ARCH-02, 04, 06) | yes |
+| `script/ci/package_todo_check` | No `package_todo.yml` (ARCH-05) | yes |
 | `devcontainer` job (GitHub CI) | Dev Container runs `bin/ci` | none |
 
 The process guards of the template's own build (the lead guard and the
@@ -70,11 +75,11 @@ adopter keeps.
 | Rule | Guard | Target | Now |
 | --- | --- | --- | --- |
 | ARCH-01 | — | review | review |
-| ARCH-02 | Packwerk layer checker (`packwerk-extensions`) | enforced | review |
+| ARCH-02 | Layer checker (`packwerk-extensions`) | enforced | enforced |
 | ARCH-03 | — | review | review |
-| ARCH-04 | `bin/packwerk validate`, `bin/packwerk check` | enforced | review |
-| ARCH-05 | `bin/packwerk check` with no todo files | enforced | review |
-| ARCH-06 | Packwerk privacy checker, `enforce_privacy` | enforced | review |
+| ARCH-04 | `bin/packwerk validate` and `check` | enforced | enforced |
+| ARCH-05 | `script/ci/package_todo_check` | enforced | enforced |
+| ARCH-06 | Packwerk privacy checker, `enforce_privacy` | enforced | enforced |
 | ARCH-07 | — | review | review |
 | ARCH-08 | — | review | review |
 | ARCH-09 | — | review | review |
