@@ -114,6 +114,9 @@ When every issue in a milestone is closed:
    and `bin/ci` on a clean checkout.
 2. Blocking findings become issues in the same milestone, and the loop
    continues. Other findings go to the next milestone.
+   An issue closed as not planned (a duplicate or a dropped item) counts
+   as closed, provided a comment on it links the issue or pull request
+   that covers it, or says why it was dropped.
 3. When the gate passes, the lead updates `VERSION` through a pull
    request and closes the milestone, which publishes the release.
 
