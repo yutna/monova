@@ -88,8 +88,10 @@ case "$tool" in
     write='([[:space:]]tee[[:space:]]|sed[[:space:]]+-i|perl[[:space:]]+-[a-z]*i|[[:space:]]truncate[[:space:]]|(^|[;&|[:space:]])(cp|mv|rm|install|patch|ln)[[:space:]]|git[[:space:]]+apply|git[[:space:]]+(checkout|restore)[[:space:]]+(--[[:space:]]|[^-]))'
     # Checked per simple command, so `cp a /tmp/b && bin/ci` is not a write
     # to bin/. The split ignores quoting; it errs towards blocking.
-    # `cp`, `install` and `ln` write only their last argument (unless a
-    # target directory is given with -t); their sources are only read.
+    # `cp`, `install` and `ln` write only their target: the last operand
+    # before any redirect or comment, skipping options (unless a target
+    # directory is given with -t). Their sources are only read. When no
+    # operand is found, every word is checked.
     while IFS= read -r segment; do
       grep -Eq "$write" <<<" $segment" || continue
       read -ra words <<<"$segment"
@@ -97,11 +99,16 @@ case "$tool" in
       candidates=("${words[@]}")
       case "${words[0]}" in
         cp | install | ln)
-          only_last=1
+          dest=""
           for w in "${words[@]:1}"; do
-            case "$w" in --target-directory* | -t* | -[!-]*t*) only_last=0 ;; esac
+            case "$w" in
+              *'<'* | *'>'* | '#'*) break ;;
+              --target-directory* | -t* | -[!-]*t*) dest=""; break ;;
+              -*) ;;
+              *) dest="$w" ;;
+            esac
           done
-          if [ "$only_last" -eq 1 ]; then candidates=("${words[-1]}"); fi
+          if [ -n "$dest" ]; then candidates=("$dest"); fi
           ;;
       esac
       for w in "${candidates[@]}"; do
