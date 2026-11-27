@@ -2,7 +2,9 @@
 # frozen_string_literal: true
 
 # Run the RSpec suite. `bin/ci` prepares the test database before calling this
-# script.
+# script. With no path argument, run the root specs and every engine's specs.
 require "bundler/setup"
+
+ARGV.concat(["spec", *Dir["engines/*/spec"].sort]) if ARGV.none? { |arg| File.exist?(arg) }
 
 load Gem.bin_path("rspec-core", "rspec")

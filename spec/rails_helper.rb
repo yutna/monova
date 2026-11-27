@@ -23,3 +23,7 @@ RSpec.configure do |config|
   # (TS-03).
   config.use_transactional_fixtures = true
 end
+
+# Every engine keeps its factories beside its specs (TS-03).
+FactoryBot.definition_file_paths += Rails.root.glob("engines/*/spec/factories").map(&:to_s)
+FactoryBot.reload
