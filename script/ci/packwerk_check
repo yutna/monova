@@ -14,7 +14,7 @@ RULE_ID = "ARCH-04"
 ROOT = File.expand_path("../..", __dir__)
 PACKWERK = File.join(ROOT, "bin", "packwerk")
 GEMFILE = File.join(ROOT, "Gemfile")
-INSPECTED = /Packwerk is inspecting (\d+) files/
+INSPECTED = /Packwerk is inspecting (\d+) files?/
 ANSI = /\e\[[0-9;]*m/
 
 def fail_rule(message)
