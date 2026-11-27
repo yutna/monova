@@ -7,6 +7,8 @@ CI.run do
   step "Style: Markdown", "test node_modules -nt package-lock.json || npm ci && npm run lint:md"
   step "Guards: Documentation", "npm run docs:check"
   step "Guards: Documentation canary", "script/docs/canary"
+  step "Guards: PostgreSQL image", "script/ci/postgres_image_check"
+  step "Guards: PostgreSQL image canary", "script/ci/postgres_image_check --canary"
 
   step "Guards: Lead guard canary", "script/ci/lead_guard_canary"
   step "Guards: OpenCode policy", "script/ci/opencode_policy_check"
