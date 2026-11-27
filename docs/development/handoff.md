@@ -107,17 +107,17 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 - v0.3.0 and v0.4.0 are gated, released and closed (v0.4.0 on
   2026-11-27; `VERSION` is 0.4.0). The specification files exist.
-- v0.5.0 is in progress. Closed: #89, #95, #101 to #107. #108 (Dev
-  Container, draft PR #122) is with the implementer. Open after it:
-  #109 and #110 (both depend on #108) and #111 (ready; its dependency
-  #103 is closed).
+- v0.5.0 is in progress. Closed: #89, #95, #101 to #108 (#108 merged
+  as PR #122). #109 (Dev Container CI job, draft PR #125) is with the
+  implementer. Open after it: #110 (depends on #108, ready) and #111
+  (ready).
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review PR #122 (#108), then dispatch #111, #109 and #110.
+1. Review PR #125 (#109), then dispatch #110 and #111.
 2. Plan v0.6.0 when v0.5.0 is nearly done, from the specification
    (for example tokens and tenancy, AUTH and DATA), never further ahead.
 3. Gate and release v0.5.0.
