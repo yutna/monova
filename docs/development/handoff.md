@@ -105,26 +105,24 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 ## State
 
-- v0.3.0 and v0.4.0 are gated, released and closed (v0.4.0 on
-  2026-11-27; `VERSION` is 0.4.0). The specification files exist.
-- v0.5.0: every work issue is closed and the gate passed on `main` at
-  `ec1d083` (2026-11-27). #134 (bump `VERSION` to 0.5.0) is with the
-  implementer, draft PR #138.
-- v0.6.0 holds the v0.5.0 gate's non-blocking findings: #135 (Dependabot
-  for npm and the Dockerfile), #136 (ShellCheck on every shell script),
-  both `owner: implementer`, and #137 (`owner: lead`, state the
-  migrator's `CREATEDB` in DATA-01).
+- v0.3.0 through v0.6.0 are gated, released and closed (`VERSION` is
+  0.6.0, #144). v0.6.0 held the v0.5.0 gate findings (#140, #141, #142).
+- v0.7.0 (the kernel engine and Packwerk) is planned as #145 (core
+  engine and engine specs in `bin/rspec`), #146 (Packwerk check in CI,
+  no `package_todo.yml`) and #147 (canaries for the dependency, privacy
+  and layer checks), all `owner: implementer`. #145 is with the
+  implementer, draft PR #148; #146 and #147 depend on it.
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review PR #138 (#134), merge it, then close v0.5.0 (the release).
-2. Do #137 and dispatch #135 and #136.
-3. Add v0.6.0's planned work from the specification (for example tokens
-   and tenancy, AUTH and DATA) as small `work_item` issues; never plan
-   v0.7.0 before v0.6.0 is nearly done.
+1. Review PR #148 (#145) when it is marked ready, and merge it.
+2. Dispatch #146, then #147.
+3. When every v0.7.0 issue is closed, run the gate, bump `VERSION` and
+   close the milestone; plan v0.8.0 (AUTH and DATA on top of core) only
+   once v0.7.0 is nearly done.
 
 ## After the major release
 
