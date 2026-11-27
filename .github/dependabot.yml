@@ -24,6 +24,30 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        update-types: [minor, patch]
+    labels: [dependencies]
+    assignees: [yutna]
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        update-types: [minor, patch]
+    labels: [dependencies]
+    assignees: [yutna]
+    commit-message:
+      prefix: chore
+      include: scope
   - package-ecosystem: docker-compose
     directory: /.devcontainer
     schedule:
