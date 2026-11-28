@@ -118,21 +118,22 @@ owner's GitHub account, a GitHub approval cannot separate them; the
   blocking (S2) findings, now in v0.8.0: #175 (CI replays every
   migration under strong_migrations and diffs `structure.sql`) merged
   as #178, and #176 (the tenancy helper refuses a second tenant in one
-  transaction) is with the implementer (draft pull request #179).
+  transaction) merged as #179. The second v0.8.0 gate passed on `main`
+  at `7e22c3e`; its S3 findings go to v0.9.0 planning (see the gate
+  comment on #181). #181 (bump `VERSION` to 0.8.0) is with the
+  implementer (draft pull request #182).
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review pull request #179 (for #176) once its implementer run has
+1. Review pull request #182 (for #181) once its implementer run has
    ended and it is marked ready, and merge it.
-2. Plan v0.9.0 from the specification when no implementer runs; never
-   plan further ahead.
-3. When #176 is closed, rerun the v0.8.0 gate with a fresh
-   subagent that applies the finding admission rule; when it passes,
-   bump `VERSION` to 0.8.0 through an implementer issue and close the
-   milestone.
+2. Close the v0.8.0 milestone without gating again, unless `main`
+   changed beyond the bump.
+3. Plan v0.9.0 from the specification and the second gate's S3
+   findings when no implementer runs; never plan further ahead.
 
 ## After the major release
 
