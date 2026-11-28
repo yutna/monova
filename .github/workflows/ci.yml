@@ -182,6 +182,12 @@ jobs:
       - name: "Database: roles"
         run: bin/db-roles
 
+      - name: "Database: migration replay"
+        run: script/ci/migration_replay_check
+
+      - name: "Database: migration replay canary"
+        run: script/ci/migration_replay_check --canary
+
       - name: "Tests: RSpec"
         run: bin/rails db:test:prepare && bin/db-roles && bin/rspec
 

@@ -1,0 +1,338 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# DATA-04: db/structure.sql is committed and is the schema CI loads, so
+# replaying every migration from an empty database must produce that file
+# exactly. A migration that changes the schema without regenerating the file
+# is drift and fails the check.
+# DATA-05: strong_migrations checks every committed migration while they run,
+# and every migration must roll back. A migration that strong_migrations
+# rejects, or a down that fails, fails the check.
+# TS-07: the check fails on an empty migration set, and --canary proves each
+# failure class is caught and reported with its rule ID.
+
+require "open3"
+require "optparse"
+require "rbconfig"
+require "tmpdir"
+
+RULE_SCHEMA = "DATA-04"
+RULE_MIGRATION = "DATA-05"
+ROOT = File.expand_path("../..", __dir__)
+RAILS = File.join(ROOT, "bin", "rails")
+GEMFILE = File.join(ROOT, "Gemfile")
+STRUCTURE = File.join(ROOT, "db", "structure.sql")
+FIXTURES = File.join(__dir__, "fixtures", "migration_replay")
+
+UNSAFE = "REPLAY_UNSAFE"
+ZERO = "REPLAY_ZERO"
+UP_ERROR = "REPLAY_UP_ERROR"
+DOWN_ERROR = "REPLAY_DOWN_ERROR"
+DOWN_LEFT = "REPLAY_DOWN_LEFT"
+MIGRATIONS_UP = /MIGRATIONS_UP=(\d+)/
+MIGRATIONS_DOWN = /MIGRATIONS_DOWN=(\d+)/
+DANGEROUS = "=== Dangerous operation detected #strong_migrations ==="
+
+Result = Struct.new(:ok, :rule, :message, keyword_init: true)
+
+class ScratchDatabaseError < StandardError; end
+
+def fail_rule(rule, message)
+  warn "migration_replay_check: #{rule}: #{message}"
+  exit 1
+end
+
+def runner_env(database)
+  {
+    "BUNDLE_GEMFILE" => GEMFILE,
+    "DB_ROLE" => "monova_migrator",
+    "RAILS_ENV" => "test",
+    "MONOVA_TEST_DATABASE" => database
+  }
+end
+
+def run_rails(env, *args)
+  Open3.capture2e(env, RbConfig.ruby, RAILS, *args, chdir: ROOT)
+end
+
+def run_runner(env, *args)
+  Open3.capture2e(
+    env, RbConfig.ruby, RAILS, "runner", File.expand_path(__FILE__), *args, chdir: ROOT
+  )
+end
+
+# Every replay runs in its own scratch database so two runs in one tree cannot
+# collide, and so the shared development and test databases are never touched.
+def with_scratch_database(suffix)
+  database = "monova_migration_replay_#{Process.pid}_#{suffix}"
+  env = runner_env(database)
+
+  run_rails(env, "db:drop:primary")
+  output, status = run_rails(env, "db:create:primary")
+  unless status.success?
+    raise ScratchDatabaseError, "could not create the scratch database #{database}: #{output.strip}"
+  end
+
+  begin
+    yield env
+  ensure
+    run_rails(env, "db:drop:primary")
+  end
+end
+
+def migration_paths
+  configured = ENV["MIGRATION_REPLAY_PATHS"].to_s
+  return configured.split(File::PATH_SEPARATOR) unless configured.empty?
+
+  ActiveRecord::Tasks::DatabaseTasks.migrations_paths
+end
+
+def unsafe_migration?(error)
+  error.is_a?(StrongMigrations::UnsafeMigration) || error.message.include?(DANGEROUS)
+end
+
+def unsafe_detail(error)
+  line = error.message.lines.find { |candidate| candidate.include?(DANGEROUS) }
+  (line || error.message.lines.first).to_s.strip
+end
+
+def replay_up
+  # strong_migrations reads Rake.application when it reports a rejection, and
+  # `bin/rails runner` boots without a Rake application.
+  require "rake"
+  Rake.application ||= Rake::Application.new
+
+  paths = migration_paths
+  context = ActiveRecord::MigrationContext.new(paths)
+  count = context.migrations.length
+
+  if count.zero?
+    warn "#{ZERO}=no migrations in #{paths.join(", ")}"
+    exit 3
+  end
+
+  begin
+    context.migrate
+  rescue StandardError => error
+    if unsafe_migration?(error)
+      warn "#{UNSAFE}=#{unsafe_detail(error)}"
+      warn error.message
+      exit 2
+    end
+
+    warn "#{UP_ERROR}=#{error.class}: #{error.message.lines.first.to_s.strip}"
+    warn error.message
+    exit 1
+  end
+
+  connection = ActiveRecord::Base.connection
+  applied = connection.select_value("SELECT count(*) FROM schema_migrations").to_i
+  if applied != count
+    warn "#{UP_ERROR}=schema_migrations holds #{applied} versions but #{count} migrations ran"
+    exit 1
+  end
+
+  ENV["SCHEMA"] = ENV.fetch("MIGRATION_REPLAY_OUT")
+  ActiveRecord::Tasks::DatabaseTasks.dump_schema(ActiveRecord::Base.connection_pool.db_config)
+  puts "MIGRATIONS_UP=#{count}"
+end
+
+def replay_down
+  require "rake"
+  Rake.application ||= Rake::Application.new
+
+  context = ActiveRecord::MigrationContext.new(migration_paths)
+  count = context.migrations.length
+
+  begin
+    context.migrate(0)
+  rescue StandardError => error
+    warn "#{DOWN_ERROR}=#{error.class}: #{error.message.lines.first.to_s.strip}"
+    warn error.message
+    exit 2
+  end
+
+  left = ActiveRecord::Base.connection.select_value("SELECT count(*) FROM schema_migrations").to_i
+  if left.positive?
+    warn "#{DOWN_LEFT}=#{left} versions still recorded after rolling every migration back"
+    exit 2
+  end
+
+  puts "MIGRATIONS_DOWN=#{count}"
+end
+
+def marker_line(output, marker)
+  line = output.lines.find { |candidate| candidate.start_with?("#{marker}=") }
+  line&.strip || output.lines.map(&:strip).reject(&:empty?).last
+end
+
+# Returns the lines that differ, with the first differing line numbered, or nil
+# when the dump matches the committed file.
+def structure_difference(dump, expected)
+  actual = File.readlines(dump)
+  wanted = File.readlines(expected)
+  return nil if actual == wanted
+
+  index = (0...[ actual.length, wanted.length ].max).find { |i| actual[i] != wanted[i] }
+  "line #{index + 1}: expected #{wanted[index].inspect}, replayed #{actual[index].inspect}"
+end
+
+def structure_label(path)
+  path.start_with?("#{ROOT}/") ? path.delete_prefix("#{ROOT}/") : path
+end
+
+def replay(migrations: nil, structure: STRUCTURE)
+  Dir.mktmpdir("migration-replay") do |directory|
+    dump = File.join(directory, "structure.sql")
+
+    with_scratch_database("check") do |env|
+      env = env.merge("MIGRATION_REPLAY_OUT" => dump)
+      env["MIGRATION_REPLAY_PATHS"] = migrations.join(File::PATH_SEPARATOR) if migrations
+
+      up_output, up_status = run_runner(env, "--replay-up")
+      up = MIGRATIONS_UP.match(up_output)
+
+      unless up_status.success? && up
+        if up_output.include?("#{UNSAFE}=")
+          next Result.new(
+            ok: false,
+            rule: RULE_MIGRATION,
+            message: "strong_migrations rejected a migration: #{marker_line(up_output, UNSAFE)}"
+          )
+        end
+
+        if up_output.include?("#{ZERO}=")
+          next Result.new(
+            ok: false,
+            rule: "#{RULE_SCHEMA}, #{RULE_MIGRATION}",
+            message: "no migrations were replayed: #{marker_line(up_output, ZERO)}"
+          )
+        end
+
+        next Result.new(
+          ok: false,
+          rule: RULE_MIGRATION,
+          message: "a migration did not run: #{marker_line(up_output, UP_ERROR)}"
+        )
+      end
+
+      up_count = up[1].to_i
+
+      unless structure && File.file?(structure)
+        next Result.new(
+          ok: false,
+          rule: RULE_SCHEMA,
+          message: "the expected structure file #{structure.inspect} is missing"
+        )
+      end
+
+      difference = structure_difference(dump, structure)
+      if difference
+        next Result.new(
+          ok: false,
+          rule: RULE_SCHEMA,
+          message: "the replay dump differs from #{structure_label(structure)} (#{difference})"
+        )
+      end
+
+      down_output, down_status = run_runner(env, "--replay-down")
+      down = MIGRATIONS_DOWN.match(down_output)
+
+      unless down_status.success? && down
+        next Result.new(
+          ok: false,
+          rule: RULE_MIGRATION,
+          message: "a migration did not roll back: #{marker_line(down_output, DOWN_ERROR)}"
+        )
+      end
+
+      down_count = down[1].to_i
+      if down_count != up_count
+        next Result.new(
+          ok: false,
+          rule: RULE_MIGRATION,
+          message: "replayed #{up_count} migrations up but #{down_count} down"
+        )
+      end
+
+      Result.new(
+        ok: true,
+        message: "replayed #{up_count} migration(s) up and #{down_count} down; " \
+                 "#{structure_label(structure)} matches"
+      )
+    end
+  end
+rescue ScratchDatabaseError => error
+  Result.new(ok: false, rule: "#{RULE_SCHEMA}, #{RULE_MIGRATION}", message: error.message)
+end
+
+def check
+  result = replay
+  fail_rule(result.rule, result.message) unless result.ok
+
+  puts "migration_replay_check: #{result.message}"
+  0
+end
+
+# Each case: fixture directory, whether the replay must pass, and the rule ID
+# the failure must name. The empty case proves the guard fails on no input.
+CANARY_CASES = [
+  [ "clean", true, nil ],
+  [ "unsafe", false, RULE_MIGRATION ],
+  [ "drifted", false, RULE_SCHEMA ],
+  [ "irreversible", false, RULE_MIGRATION ],
+  [ "empty", false, RULE_MIGRATION ]
+].freeze
+
+def canary
+  failures = 0
+
+  CANARY_CASES.each do |name, must_pass, rule|
+    directory = File.join(FIXTURES, name)
+    migrations = File.join(directory, "migrate")
+    structure = File.join(directory, "structure.sql")
+
+    unless Dir.exist?(migrations)
+      failures += 1
+      warn "migration_replay_check --canary: the #{name} fixture has no #{migrations}"
+      next
+    end
+
+    result = replay(migrations: [ migrations ], structure: structure)
+    named_rule = rule.nil? || result.rule.to_s.include?(rule)
+
+    if result.ok == must_pass && named_rule
+      puts "ok: #{name} #{must_pass ? "passes" : "fails (#{result.rule})"}: #{result.message}"
+      next
+    end
+
+    failures += 1
+    warn "migration_replay_check --canary: #{name} must #{must_pass ? "pass" : "fail with #{rule}"}"
+    warn "migration_replay_check --canary: #{name} returned ok=#{result.ok} " \
+         "rule=#{result.rule.inspect}: #{result.message}"
+  end
+
+  if failures.positive?
+    warn "migration_replay_check --canary: checked #{CANARY_CASES.length} fixtures; failures=#{failures}"
+    return 1
+  end
+
+  puts "migration_replay_check --canary: checked #{CANARY_CASES.length} fixtures; failures=0"
+  0
+end
+
+if ARGV.delete("--replay-up")
+  replay_up
+elsif ARGV.delete("--replay-down")
+  replay_down
+else
+  options = { canary: false }
+  OptionParser.new do |parser|
+    parser.banner = "Usage: migration_replay_check [--canary]"
+    parser.on("--canary", "Prove the check fails for an unsafe, drifted, irreversible and empty fixture") do
+      options[:canary] = true
+    end
+  end.parse!
+
+  exit(options[:canary] ? canary : check)
+end
