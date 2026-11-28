@@ -11,6 +11,7 @@
 # TS-07: the check fails on an empty migration set, and --canary proves each
 # failure class is caught and reported with its rule ID.
 
+require "fileutils"
 require "open3"
 require "optparse"
 require "rbconfig"
@@ -18,6 +19,7 @@ require "tmpdir"
 
 RULE_SCHEMA = "DATA-04"
 RULE_MIGRATION = "DATA-05"
+STATE_DIR = "MIGRATION_REPLAY_STATES"
 ROOT = File.expand_path("../..", __dir__)
 RAILS = File.join(ROOT, "bin", "rails")
 GEMFILE = File.join(ROOT, "Gemfile")
@@ -30,6 +32,7 @@ UP_ERROR = "REPLAY_UP_ERROR"
 DUMP_ERROR = "REPLAY_DUMP_ERROR"
 DOWN_ERROR = "REPLAY_DOWN_ERROR"
 DOWN_LEFT = "REPLAY_DOWN_LEFT"
+STATE_ERROR = "REPLAY_STATE_ERROR"
 MIGRATIONS_UP = /MIGRATIONS_UP=(\d+)/
 MIGRATIONS_DOWN = /MIGRATIONS_DOWN=(\d+)/
 DANGEROUS = "=== Dangerous operation detected #strong_migrations ==="
@@ -88,6 +91,39 @@ def migration_paths
   ActiveRecord::Tasks::DatabaseTasks.migrations_paths
 end
 
+def pg_dump_env(db_config)
+  config = db_config.configuration_hash
+  {
+    "PGHOST" => config[:host].to_s,
+    "PGPORT" => config[:port].to_s,
+    "PGUSER" => config[:username].to_s,
+    "PGPASSWORD" => config[:password].to_s,
+    "PGDATABASE" => config[:database].to_s
+  }
+end
+
+# A schema-only dump from PostgreSQL itself, so every object kind a migration
+# can create is compared: tables, indexes, policies, functions, triggers,
+# types, extensions and grants. Rails creates schema_migrations and
+# ar_internal_metadata during the first migration and keeps them after every
+# down, so they are Rails' bookkeeping rather than migration schema and are
+# left out of both sides of the comparison.
+def dump_state(path)
+  db_config = ActiveRecord::Base.connection_pool.db_config
+  output, status = Open3.capture2e(
+    pg_dump_env(db_config),
+    "pg_dump", "--schema-only", "--no-owner",
+    "--exclude-table=schema_migrations",
+    "--exclude-table=ar_internal_metadata",
+    "--file", path, db_config.database
+  )
+  return if status.success?
+
+  detail = output.lines.map(&:strip).reject(&:empty?).last || "pg_dump failed"
+  warn "#{STATE_ERROR}=#{detail}"
+  exit 1
+end
+
 def unsafe_migration?(error)
   error.is_a?(StrongMigrations::UnsafeMigration) || error.message.include?(DANGEROUS)
 end
@@ -109,25 +145,42 @@ def replay_up
 
   paths = migration_paths
   context = ActiveRecord::MigrationContext.new(paths)
-  count = context.migrations.length
+  migrations = context.migrations
+  count = migrations.length
 
   if count.zero?
     warn "#{ZERO}=no migrations in #{paths.join(", ")}"
     exit 3
   end
 
-  begin
-    context.migrate
-  rescue StandardError => error
-    if unsafe_migration?(error)
-      warn "#{UNSAFE}=#{unsafe_detail(error)}"
+  states = ENV.fetch(STATE_DIR) do
+    warn "#{STATE_ERROR}=#{STATE_DIR} is not set"
+    exit 1
+  end
+  FileUtils.mkdir_p(states)
+  File.write(
+    File.join(states, "index.tsv"),
+    "#{migrations.map { |migration| "#{migration.version}\t#{migration.name}" }.join("\n")}\n"
+  )
+
+  dump_state(File.join(states, "state-0.sql"))
+
+  migrations.each_with_index do |migration, index|
+    begin
+      context.up(migration.version)
+    rescue StandardError => error
+      if unsafe_migration?(error)
+        warn "#{UNSAFE}=#{unsafe_detail(error)}"
+        warn error.message
+        exit 2
+      end
+
+      warn "#{UP_ERROR}=#{error.class}: #{error_detail(error)}"
       warn error.message
-      exit 2
+      exit 1
     end
 
-    warn "#{UP_ERROR}=#{error.class}: #{error_detail(error)}"
-    warn error.message
-    exit 1
+    dump_state(File.join(states, "state-#{index + 1}.sql"))
   end
 
   connection = ActiveRecord::Base.connection
@@ -154,14 +207,23 @@ def replay_down
   Rake.application ||= Rake::Application.new
 
   context = ActiveRecord::MigrationContext.new(migration_paths)
-  count = context.migrations.length
+  migrations = context.migrations
+  count = migrations.length
+  states = ENV.fetch(STATE_DIR) do
+    warn "#{STATE_ERROR}=#{STATE_DIR} is not set"
+    exit 1
+  end
 
-  begin
-    context.migrate(0)
-  rescue StandardError => error
-    warn "#{DOWN_ERROR}=#{error.class}: #{error_detail(error)}"
-    warn error.message
-    exit 2
+  count.downto(1) do |index|
+    begin
+      context.rollback(1)
+    rescue StandardError => error
+      warn "#{DOWN_ERROR}=#{error.class}: #{error_detail(error)}"
+      warn error.message
+      exit 2
+    end
+
+    dump_state(File.join(states, "down-#{index}.sql"))
   end
 
   left = ActiveRecord::Base.connection.select_value("SELECT count(*) FROM schema_migrations").to_i
@@ -198,12 +260,58 @@ def structure_label(path)
   path.start_with?("#{ROOT}/") ? path.delete_prefix("#{ROOT}/") : path
 end
 
+# pg_dump 18 writes a random `\restrict` token and its matching `\unrestrict`
+# line into every dump. The token differs on every run, so those lines are the
+# only part of two dumps of the same schema that legitimately differs.
+def schema_lines(path)
+  File.readlines(path, chomp: true).reject do |line|
+    line.start_with?("\\restrict ", "\\unrestrict ")
+  end
+end
+
+def line_window(lines, index)
+  slice = lines[index, 3]
+  slice.nil? || slice.empty? ? "<end of dump>" : slice.join("\n")
+end
+
+def line_difference(before, after)
+  index = (0...[ before.length, after.length ].max).find { |i| before[i] != after[i] }
+  "line #{index + 1}: before #{line_window(before, index).inspect}, " \
+    "after #{line_window(after, index).inspect}"
+end
+
+# For each migration, compare the schema after its down with the schema before
+# its up, which is the dump taken after the migration before it. Walk the
+# migrations from the last one back, because a leftover stays in place through
+# every earlier rollback: checking the last migration first means the first
+# difference found is the migration whose own down left the object, not an
+# earlier migration that ran after it. The first line that differs names the
+# object the down left behind.
+def rollback_difference(states)
+  manifest = File.readlines(File.join(states, "index.tsv"), chomp: true)
+
+  manifest.each_with_index.reverse_each do |entry, offset|
+    index = offset + 1
+    version, name = entry.split("\t", 2)
+    before = schema_lines(File.join(states, "state-#{index - 1}.sql"))
+    after = schema_lines(File.join(states, "down-#{index}.sql"))
+    next if before == after
+
+    return "migration #{version} (#{name}) does not restore the schema after its down: " \
+           "#{line_difference(before, after)}"
+  end
+
+  nil
+end
+
 def replay(migrations: nil, structure: STRUCTURE)
   Dir.mktmpdir("migration-replay") do |directory|
     dump = File.join(directory, "structure.sql")
+    states = File.join(directory, "states")
+    FileUtils.mkdir_p(states)
 
     with_scratch_database("check") do |env|
-      env = env.merge("MIGRATION_REPLAY_OUT" => dump)
+      env = env.merge("MIGRATION_REPLAY_OUT" => dump, STATE_DIR => states)
       env["MIGRATION_REPLAY_PATHS"] = migrations.join(File::PATH_SEPARATOR) if migrations
 
       up_output, up_status = run_runner(env, "--replay-up")
@@ -223,6 +331,15 @@ def replay(migrations: nil, structure: STRUCTURE)
             ok: false,
             rule: "#{RULE_SCHEMA}, #{RULE_MIGRATION}",
             message: "no migrations were replayed: #{marker_line(up_output, ZERO)}"
+          )
+        end
+
+        if up_output.include?("#{STATE_ERROR}=")
+          next Result.new(
+            ok: false,
+            rule: RULE_MIGRATION,
+            message: "the schema could not be dumped before a migration: " \
+                     "#{marker_line(up_output, STATE_ERROR)}"
           )
         end
 
@@ -264,6 +381,15 @@ def replay(migrations: nil, structure: STRUCTURE)
       down = MIGRATIONS_DOWN.match(down_output)
 
       unless down_status.success? && down
+        if down_output.include?("#{STATE_ERROR}=")
+          next Result.new(
+            ok: false,
+            rule: RULE_MIGRATION,
+            message: "the schema could not be dumped after a rollback: " \
+                     "#{marker_line(down_output, STATE_ERROR)}"
+          )
+        end
+
         next Result.new(
           ok: false,
           rule: RULE_MIGRATION,
@@ -280,10 +406,15 @@ def replay(migrations: nil, structure: STRUCTURE)
         )
       end
 
+      difference = rollback_difference(states)
+      if difference
+        next Result.new(ok: false, rule: RULE_MIGRATION, message: difference)
+      end
+
       Result.new(
         ok: true,
         message: "replayed #{up_count} migration(s) up and #{down_count} down; " \
-                 "#{structure_label(structure)} matches"
+                 "#{structure_label(structure)} matches and every down restored the schema"
       )
     end
   end
@@ -299,20 +430,28 @@ def check
   0
 end
 
-# Each case: fixture directory, whether the replay must pass, and the rule ID
-# the failure must name. The empty case proves the guard fails on no input.
+# Each case: fixture directory, whether the replay must pass, the rule ID the
+# failure must name, and the text the failure must contain. The empty case
+# proves the guard fails on no input; the leftover cases prove the rollback
+# failure names both the migration and the object it left behind.
 CANARY_CASES = [
-  [ "clean", true, nil ],
-  [ "unsafe", false, RULE_MIGRATION ],
-  [ "drifted", false, RULE_SCHEMA ],
-  [ "irreversible", false, RULE_MIGRATION ],
-  [ "empty", false, RULE_MIGRATION ]
+  [ "clean", true, nil, [] ],
+  [ "unsafe", false, RULE_MIGRATION, [] ],
+  [ "drifted", false, RULE_SCHEMA, [] ],
+  [ "irreversible", false, RULE_MIGRATION, [] ],
+  [ "empty", false, RULE_MIGRATION, [] ],
+  [ "leftover_function", false, RULE_MIGRATION,
+    [ "20260101000000", "CreateMigrationReplayLeftoverFunction", "migration_replay_no_down" ] ],
+  [ "leftover_function_later", false, RULE_MIGRATION,
+    [ "20260101000001", "AddMigrationReplayLeftoverFunction", "migration_replay_later_no_down" ] ],
+  [ "leftover_index", false, RULE_MIGRATION,
+    [ "20260101000001", "AddMigrationReplayLeftoverIndex", "migration_replay_leftover_index" ] ]
 ].freeze
 
 def canary
   failures = 0
 
-  CANARY_CASES.each do |name, must_pass, rule|
+  CANARY_CASES.each do |name, must_pass, rule, expected|
     directory = File.join(FIXTURES, name)
     migrations = File.join(directory, "migrate")
     structure = File.join(directory, "structure.sql")
@@ -325,8 +464,9 @@ def canary
 
     result = replay(migrations: [ migrations ], structure: structure)
     named_rule = rule.nil? || result.rule.to_s.include?(rule)
+    named_text = expected.all? { |text| result.message.include?(text) }
 
-    if result.ok == must_pass && named_rule
+    if result.ok == must_pass && named_rule && named_text
       puts "ok: #{name} #{must_pass ? "passes" : "fails (#{result.rule})"}: #{result.message}"
       next
     end
@@ -335,6 +475,7 @@ def canary
     warn "migration_replay_check --canary: #{name} must #{must_pass ? "pass" : "fail with #{rule}"}"
     warn "migration_replay_check --canary: #{name} returned ok=#{result.ok} " \
          "rule=#{result.rule.inspect}: #{result.message}"
+    warn "migration_replay_check --canary: #{name} must name #{expected.join(", ")}" unless named_text
   end
 
   if failures.positive?
