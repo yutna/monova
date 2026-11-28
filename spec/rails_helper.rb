@@ -27,3 +27,7 @@ end
 # Every engine keeps its factories beside its specs (TS-03).
 FactoryBot.definition_file_paths += Rails.root.glob("engines/*/spec/factories").map(&:to_s)
 FactoryBot.reload
+
+# Spec support that changes the suite's behaviour, such as the tenancy
+# fixture exemption, lives under spec/support (TS-03).
+Rails.root.glob("spec/support/**/*.rb").sort.each { |file| require file }
