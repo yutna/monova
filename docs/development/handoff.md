@@ -105,35 +105,34 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 ## State
 
-- v0.3.0 through v0.7.0 are gated, released and closed (`VERSION` is
-  0.7.0, #160). v0.7.0 added the `core` kernel engine and Packwerk; its
-  gate findings #153 and #154 merged as #155 and #156.
-- v0.8.0 (AUTH and DATA on top of core) is open. Merged so far: #158
-  (Packwerk's singular file count, #165), #161 (strong_migrations and
-  its canary, #167) and #166 (the finding admission rule in protocol
-  §7, #168), #162 (core's base record, table defaults and
-  `core_tenants`, #169) and #163 (the per-transaction tenancy helper,
-  #171) and #164 (the tenant policy helper, `TenantOwned` and the
-  DATA-03 catalog check, #173). The first v0.8.0 gate found two
-  blocking (S2) findings, now in v0.8.0: #175 (CI replays every
-  migration under strong_migrations and diffs `structure.sql`) merged
-  as #178, and #176 (the tenancy helper refuses a second tenant in one
-  transaction) merged as #179. The second v0.8.0 gate passed on `main`
-  at `7e22c3e`; its S3 findings go to v0.9.0 planning (see the gate
-  comment on #181). #181 (bump `VERSION` to 0.8.0) is with the
-  implementer (draft pull request #182).
+- v0.3.0 through v0.8.0 are gated, released and closed (`VERSION` is
+  0.8.0, #182). v0.8.0 added AUTH and DATA on top of core: core's base
+  record and `core_tenants`, the per-transaction tenancy helper, the
+  tenant policy helper with `TenantOwned` and the DATA-03 catalog
+  check, strong_migrations with its canary, and the migration replay
+  check. Its second gate passed on `main` at `7e22c3e` (comment on
+  #181).
+- v0.9.0 is planned (8 issues). The second gate's S3 findings: #184
+  (redesign the tenancy helper's tenant tracking from AUTH-12; with the
+  implementer, draft pull request #191), #185 (the rollback check
+  compares the schema before and after) and #186 (the DATA-03 check
+  covers every policy and view). Core's tables and data classes: #187
+  (DATA-11), #188 (global users) and #190 (memberships). Lead: #189
+  (this update of the enforcement matrix and the handoff).
+- `12_enforcement.md` marks DATA-03 `kernel` and DATA-04 and DATA-05
+  `enforced`.
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review pull request #182 (for #181) once its implementer run has
-   ended and it is marked ready, and merge it.
-2. Close the v0.8.0 milestone without gating again, unless `main`
-   changed beyond the bump.
-3. Plan v0.9.0 from the specification and the second gate's S3
-   findings when no implementer runs; never plan further ahead.
+1. Finish the v0.9.0 implementer issues in order: #184, #185, #186,
+   #187, #188, #190, honouring each issue's `Depends on`.
+2. Gate v0.9.0 when every issue is closed, then bump `VERSION` and
+   close the milestone.
+3. Plan v0.10.0 from the specification once v0.9.0 has no open
+   planning work; never plan further ahead.
 
 ## After the major release
 

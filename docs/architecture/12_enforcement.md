@@ -40,16 +40,22 @@ decision, never in the pull request that would profit from it.
 
 The template ships the kernel engine `core` and no domain or product
 engine yet; its RSpec suite covers the health check, the database roles
-(DATA-01) and the engine. Packwerk enforces the package graph, so
-ARCH-02, ARCH-04, ARCH-05, ARCH-06 and WF-03 are `enforced` and every
-other rule below is `review` today. The tools CI runs now are:
+(DATA-01), the engine, the tenancy helpers and the DATA-03 catalog
+check. Packwerk enforces the package graph, so ARCH-02, ARCH-04,
+ARCH-05, ARCH-06 and WF-03 are `enforced`. `strong_migrations` and the
+migration replay check make DATA-04 and DATA-05 `enforced`, and core's
+catalog spec makes DATA-03 `kernel`. Every other rule below is `review`
+today. The tools CI runs now are:
 
 | Tool | Checks | Canary |
 | --- | --- | --- |
 | RuboCop (Rails omakase) | Ruby style | none |
 | Brakeman `--exit-on-warn` | Code security warnings (SEC-08) | none |
 | `bundler-audit` | Gems with known advisories (SEC-08) | none |
-| RSpec (`bin/rspec`) | The application's specs | none |
+| RSpec (`bin/rspec`) | The application's and engines' specs | none |
+| Core's catalog spec (RSpec) | Forced policy per tenant table (DATA-03) | yes |
+| `strong_migrations` | Unsafe migrations, `check_down` (DATA-05) | yes |
+| `migration_replay_check` | Replay, schema diff, rollback (DATA-04, 05) | yes |
 | `db:seed:replant` (test) | Seeds load on an empty database | none |
 | `markdownlint-cli2` | Markdown, default rules | none |
 | `npm run docs:check` | Rule IDs, ADR citations, line budgets | yes |
@@ -141,9 +147,9 @@ endpoint has one is reviewed.
 | --- | --- | --- | --- |
 | DATA-01 | Kernel spec: `acme_app` owns nothing | kernel | review |
 | DATA-02 | Kernel spec: role script grants | kernel | review |
-| DATA-03 | Kernel spec: catalog of forced policies | kernel | review |
-| DATA-04 | CI loads `structure.sql` into an empty DB | enforced | review |
-| DATA-05 | `strong_migrations` with `check_down` | enforced | review |
+| DATA-03 | Kernel spec: catalog of forced policies | kernel | kernel |
+| DATA-04 | CI loads `structure.sql` into an empty DB | enforced | enforced |
+| DATA-05 | `strong_migrations` with `check_down` | enforced | enforced |
 | DATA-06 | — | review | review |
 | DATA-07 | — | review | review |
 | DATA-08 | Core's table helper, `uuidv7()` default | kernel | review |
@@ -156,7 +162,11 @@ endpoint has one is reviewed.
 | DATA-15 | — | review | review |
 | DATA-16 | `bin/ci` replants the seeds | enforced | review |
 
+- DATA-03: the catalog spec checks each table's AUTH-09 policy; extra
+  policies on a table and views are reviewed.
 - DATA-05: a safe operation wrapped in `safety_assured` is reviewed.
+  The `strong_migrations` canary runs in `bin/ci` only; GitHub CI
+  covers the same rejection with the replay check's canary.
 - DATA-10: the RuboCop part becomes `enforced` with its own canary.
 
 ### Domain
