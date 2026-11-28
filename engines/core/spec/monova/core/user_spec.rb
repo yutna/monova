@@ -12,7 +12,8 @@ RSpec.describe Monova::Core::User do
   it "finds a user by email in any case" do
     user = create(:core_user, email: "ada@example.com")
 
-    expect(described_class.find_by_email("ADA@Example.COM")).to eq(user)
+    expect(described_class.find_by_email("ADA@Example.COM"))
+      .to have_attributes(id: user.id, email: "ada@example.com")
   end
 
   it "stores the email column as ciphertext" do
