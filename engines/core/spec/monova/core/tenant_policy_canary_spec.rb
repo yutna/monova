@@ -17,9 +17,11 @@ module TenantPolicyCanary
 end
 
 # DATA-03 canary: the catalog check must reject a table with tenant_id and
-# no policy and a table with neither, and the helpers must produce exactly
-# the AUTH-09 policy. Every fixture is created as monova_migrator inside a
-# transaction that rolls back, so nothing is left in the database (TS-07).
+# no policy and a table with neither, every policy the rule does not allow,
+# and a view that reaches a tenant-owned table without security_invoker.
+# The helpers must produce exactly the AUTH-09 policy. Every fixture is
+# created as monova_migrator inside a transaction that rolls back, so
+# nothing is left in the database (TS-07).
 # rubocop:disable RSpec/DescribeClass -- a canary proves the guard catalog,
 # not a class.
 RSpec.describe "DATA-03 catalog check canary" do
@@ -34,6 +36,7 @@ RSpec.describe "DATA-03 catalog check canary" do
   end
 
   let(:migrator) { TenantPolicyCanary::Record.connection }
+  let(:catalog) { TenantPolicyCatalog.new(migrator) }
 
   it "reports a table with tenant_id and no policy and a table with neither" do
     create_bad_tables
@@ -45,7 +48,7 @@ RSpec.describe "DATA-03 catalog check canary" do
     create_policy_fixture
     expect_auth_09_policy
     expect_tenant_column
-    expect { TenantPolicyCatalog.new(migrator).check! }.not_to raise_error
+    expect { catalog.check! }.not_to raise_error
   end
 
   it "reverts the column and the policy" do
@@ -62,6 +65,52 @@ RSpec.describe "DATA-03 catalog check canary" do
       .to raise_error(TenantPolicyCatalog::EmptyCatalog, /DATA-03/)
   end
 
+  it "reports an extra PUBLIC permissive policy on a tenant-owned table" do
+    create_tenant_table(:data03_public_policy_probe)
+    migrator.execute("CREATE POLICY data03_everyone ON data03_public_policy_probe FOR SELECT USING (true)")
+
+    expect { catalog.check! }
+      .to raise_error(TenantPolicyCatalog::Violation, /data03_public_policy_probe.*data03_everyone/)
+  end
+
+  it "reports a tenant policy whose expression differs from AUTH-09" do
+    create_tenant_table(:data03_wrong_expression_probe)
+    migrator.execute("ALTER POLICY tenant_isolation ON data03_wrong_expression_probe USING (true)")
+
+    expect { catalog.check! }
+      .to raise_error(TenantPolicyCatalog::Violation, /data03_wrong_expression_probe.*tenant_isolation/)
+  end
+
+  it "reports a monova_auth SELECT policy on a table outside the AUTH-07 exception" do
+    create_tenant_table(:data03_auth_policy_probe)
+    create_auth_policy(:data03_auth_policy_probe, :data03_auth_lookup)
+
+    expect { catalog.check! }
+      .to raise_error(TenantPolicyCatalog::Violation, /data03_auth_policy_probe.*data03_auth_lookup/)
+  end
+
+  it "accepts the one AUTH-07 SELECT policy on core_tokens" do
+    create_auth_exception
+
+    expect { TenantPolicyCatalog.new(migrator, schema: "data03_auth_exception").check! }
+      .not_to raise_error
+  end
+
+  it "reports a view that reaches a tenant-owned table without security_invoker" do
+    create_unsafe_views
+
+    expect(catalog.violations).to include(
+      a_string_including("public.data03_unsafe_view is not security_invoker"),
+      a_string_including("public.data03_nested_view is not security_invoker")
+    )
+  end
+
+  it "accepts a security_invoker view over a tenant-owned table" do
+    create_safe_view
+
+    expect { catalog.check! }.not_to raise_error
+  end
+
   def connection_config
     ActiveRecord::Base.connection_db_config.configuration_hash.merge(
       username: "monova_migrator",
@@ -75,14 +124,60 @@ RSpec.describe "DATA-03 catalog check canary" do
   end
 
   def expect_bad_tables_reported
-    violations = TenantPolicyCatalog.new(migrator).violations
+    violations = catalog.violations
 
     expect(violations).to contain_exactly(
       a_string_including("public.data03_tenant_probe has tenant_id without forced row-level security"),
+      a_string_including("public.data03_tenant_probe has tenant_id without the AUTH-09 tenant policy"),
       a_string_including("public.data03_plain_probe has no tenant_id and is not a global table")
     )
-    expect { TenantPolicyCatalog.new(migrator).check! }
+    expect { catalog.check! }
       .to raise_error(TenantPolicyCatalog::Violation, /DATA-03/)
+  end
+
+  # Creates a tenant-owned table exactly as a migration would: the
+  # tenant_id column helper plus add_tenant_policy.
+  def create_tenant_table(table_name)
+    migration = Class.new(ActiveRecord::Migration[8.1]) do
+      define_method(:change) do
+        create_table table_name do |t|
+          t.tenant_id
+        end
+        add_tenant_policy table_name
+      end
+    end.new
+
+    migration.exec_migration(migrator, :up)
+  end
+
+  def create_auth_policy(table_name, policy_name)
+    migrator.execute(<<~SQL)
+      CREATE POLICY #{policy_name} ON #{table_name}
+        FOR SELECT TO monova_auth USING (true)
+    SQL
+  end
+
+  # Creates core_tokens in its own schema so the AUTH-07 exception can be
+  # proved without waiting for the migration that brings the real table.
+  def create_auth_exception
+    migrator.execute("CREATE SCHEMA data03_auth_exception")
+    migrator.execute("SET LOCAL search_path TO data03_auth_exception, public")
+    create_tenant_table(:core_tokens)
+    create_auth_policy(:core_tokens, :data03_auth_lookup)
+  end
+
+  def create_unsafe_views
+    create_tenant_table(:data03_view_probe)
+    migrator.execute("CREATE VIEW data03_unsafe_view AS SELECT * FROM data03_view_probe")
+    migrator.execute("CREATE VIEW data03_nested_view AS SELECT * FROM data03_unsafe_view")
+  end
+
+  def create_safe_view
+    create_tenant_table(:data03_safe_view_probe)
+    migrator.execute(<<~SQL)
+      CREATE VIEW data03_safe_view WITH (security_invoker = true) AS
+        SELECT * FROM data03_safe_view_probe
+    SQL
   end
 
   # Runs the helpers exactly as a migration would, through exec_migration
