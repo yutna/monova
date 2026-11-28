@@ -27,6 +27,7 @@ FIXTURES = File.join(__dir__, "fixtures", "migration_replay")
 UNSAFE = "REPLAY_UNSAFE"
 ZERO = "REPLAY_ZERO"
 UP_ERROR = "REPLAY_UP_ERROR"
+DUMP_ERROR = "REPLAY_DUMP_ERROR"
 DOWN_ERROR = "REPLAY_DOWN_ERROR"
 DOWN_LEFT = "REPLAY_DOWN_LEFT"
 MIGRATIONS_UP = /MIGRATIONS_UP=(\d+)/
@@ -96,6 +97,10 @@ def unsafe_detail(error)
   (line || error.message.lines.first).to_s.strip
 end
 
+def error_detail(error)
+  error.message.lines.map(&:strip).reject(&:empty?).last.to_s
+end
+
 def replay_up
   # strong_migrations reads Rake.application when it reports a rejection, and
   # `bin/rails runner` boots without a Rake application.
@@ -120,7 +125,7 @@ def replay_up
       exit 2
     end
 
-    warn "#{UP_ERROR}=#{error.class}: #{error.message.lines.first.to_s.strip}"
+    warn "#{UP_ERROR}=#{error.class}: #{error_detail(error)}"
     warn error.message
     exit 1
   end
@@ -132,8 +137,15 @@ def replay_up
     exit 1
   end
 
-  ENV["SCHEMA"] = ENV.fetch("MIGRATION_REPLAY_OUT")
-  ActiveRecord::Tasks::DatabaseTasks.dump_schema(ActiveRecord::Base.connection_pool.db_config)
+  begin
+    ENV["SCHEMA"] = ENV.fetch("MIGRATION_REPLAY_OUT")
+    ActiveRecord::Tasks::DatabaseTasks.dump_schema(ActiveRecord::Base.connection_pool.db_config)
+  rescue StandardError => error
+    warn "#{DUMP_ERROR}=#{error.class}: #{error_detail(error)}"
+    warn error.message
+    exit 1
+  end
+
   puts "MIGRATIONS_UP=#{count}"
 end
 
@@ -147,7 +159,7 @@ def replay_down
   begin
     context.migrate(0)
   rescue StandardError => error
-    warn "#{DOWN_ERROR}=#{error.class}: #{error.message.lines.first.to_s.strip}"
+    warn "#{DOWN_ERROR}=#{error.class}: #{error_detail(error)}"
     warn error.message
     exit 2
   end
@@ -164,6 +176,11 @@ end
 def marker_line(output, marker)
   line = output.lines.find { |candidate| candidate.start_with?("#{marker}=") }
   line&.strip || output.lines.map(&:strip).reject(&:empty?).last
+end
+
+def dump_detail(output)
+  output.lines.map(&:strip).reverse.find { |line| line.start_with?("pg_dump:") } ||
+    marker_line(output, DUMP_ERROR)
 end
 
 # Returns the lines that differ, with the first differing line numbered, or nil
@@ -206,6 +223,14 @@ def replay(migrations: nil, structure: STRUCTURE)
             ok: false,
             rule: "#{RULE_SCHEMA}, #{RULE_MIGRATION}",
             message: "no migrations were replayed: #{marker_line(up_output, ZERO)}"
+          )
+        end
+
+        if up_output.include?("#{DUMP_ERROR}=")
+          next Result.new(
+            ok: false,
+            rule: RULE_SCHEMA,
+            message: "the replayed schema could not be dumped: #{dump_detail(up_output)}"
           )
         end
 
