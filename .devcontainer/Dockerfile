@@ -9,14 +9,29 @@ FROM ubuntu:24.04@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Build dependencies for the Ruby toolchain and native gems, the PostgreSQL
-# client that loads db/structure.sql, and the tools mise and git need.
+# Build dependencies for the Ruby toolchain and native gems, and the tools
+# mise and git need. The PostgreSQL client comes from the PGDG archive below,
+# so its pg_dump matches the pinned PostgreSQL 18 server (OPS-01, DATA-04).
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
       autoconf bison build-essential ca-certificates curl git jq \
       libffi-dev libgdbm-dev libncurses-dev libpq-dev libreadline-dev \
-      libssl-dev libyaml-dev patch pkg-config postgresql-client \
+      libssl-dev libyaml-dev patch pkg-config \
       sudo tzdata unzip zlib1g-dev && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# The client loads db/structure.sql and dumps it for the migration replay
+# guard. Ubuntu 24.04 ships version 16, and pg_dump refuses a server newer
+# than itself, so install version 18 from the PGDG archive that the pinned
+# server comes from (OPS-01, DATA-04, DATA-05).
+RUN install -d /usr/share/postgresql-common/pgdg && \
+    curl --proto '=https' --tlsv1.2 -fsSL \
+      https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc && \
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update -qq && \
+    apt-get install --no-install-recommends -y postgresql-client-18 && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # The non-root user the Dev Container connects as. Ubuntu 24.04 ships an
