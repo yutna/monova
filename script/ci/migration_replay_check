@@ -269,32 +269,39 @@ def schema_lines(path)
   end
 end
 
+def line_window(lines, index)
+  slice = lines[index, 3]
+  slice.nil? || slice.empty? ? "<end of dump>" : slice.join("\n")
+end
+
 def line_difference(before, after)
   index = (0...[ before.length, after.length ].max).find { |i| before[i] != after[i] }
-  expected = before[index] || "<end of dump>"
-  actual = after[index] || "<end of dump>"
-  "line #{index + 1}: before #{expected.inspect}, after #{actual.inspect}"
+  "line #{index + 1}: before #{line_window(before, index).inspect}, " \
+    "after #{line_window(after, index).inspect}"
 end
 
 # For each migration, compare the schema after its down with the schema before
-# its up, which is the dump taken after the migration before it. The first
-# line that differs names the object the down left behind.
-def rollback_differences(states)
+# its up, which is the dump taken after the migration before it. Walk the
+# migrations from the last one back, because a leftover stays in place through
+# every earlier rollback: checking the last migration first means the first
+# difference found is the migration whose own down left the object, not an
+# earlier migration that ran after it. The first line that differs names the
+# object the down left behind.
+def rollback_difference(states)
   manifest = File.readlines(File.join(states, "index.tsv"), chomp: true)
-  differences = []
 
-  manifest.each_with_index do |entry, offset|
+  manifest.each_with_index.reverse_each do |entry, offset|
     index = offset + 1
     version, name = entry.split("\t", 2)
     before = schema_lines(File.join(states, "state-#{index - 1}.sql"))
     after = schema_lines(File.join(states, "down-#{index}.sql"))
     next if before == after
 
-    differences << "migration #{version} (#{name}) does not restore the schema after its down: " \
-                   "#{line_difference(before, after)}"
+    return "migration #{version} (#{name}) does not restore the schema after its down: " \
+           "#{line_difference(before, after)}"
   end
 
-  differences
+  nil
 end
 
 def replay(migrations: nil, structure: STRUCTURE)
@@ -399,11 +406,9 @@ def replay(migrations: nil, structure: STRUCTURE)
         )
       end
 
-      differences = rollback_differences(states)
-      if differences.any?
-        message = differences.first
-        message += " (and #{differences.length - 1} more migration(s))" if differences.length > 1
-        next Result.new(ok: false, rule: RULE_MIGRATION, message: message)
+      difference = rollback_difference(states)
+      if difference
+        next Result.new(ok: false, rule: RULE_MIGRATION, message: difference)
       end
 
       Result.new(
@@ -437,6 +442,8 @@ CANARY_CASES = [
   [ "empty", false, RULE_MIGRATION, [] ],
   [ "leftover_function", false, RULE_MIGRATION,
     [ "20260101000000", "CreateMigrationReplayLeftoverFunction", "migration_replay_no_down" ] ],
+  [ "leftover_function_later", false, RULE_MIGRATION,
+    [ "20260101000001", "AddMigrationReplayLeftoverFunction", "migration_replay_later_no_down" ] ],
   [ "leftover_index", false, RULE_MIGRATION,
     [ "20260101000001", "AddMigrationReplayLeftoverIndex", "migration_replay_leftover_index" ] ]
 ].freeze
