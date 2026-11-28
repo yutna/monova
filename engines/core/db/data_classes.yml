@@ -15,3 +15,11 @@ core_users:
   password_digest: secret
   created_at: internal
   updated_at: internal
+core_memberships:
+  id: internal
+  tenant_id: internal
+  user_id: internal
+  role: public
+  status: public
+  created_at: internal
+  updated_at: internal

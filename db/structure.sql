@@ -27,6 +27,25 @@ CREATE TABLE public.ar_internal_metadata (
 
 
 --
+-- Name: core_memberships; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.core_memberships (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    tenant_id uuid DEFAULT (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid NOT NULL,
+    user_id uuid NOT NULL,
+    role text NOT NULL,
+    status text NOT NULL,
+    created_at timestamp(6) with time zone NOT NULL,
+    updated_at timestamp(6) with time zone NOT NULL,
+    CONSTRAINT core_memberships_role_allowed CHECK ((role = ANY (ARRAY['owner'::text, 'admin'::text, 'member'::text]))),
+    CONSTRAINT core_memberships_status_allowed CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text])))
+);
+
+ALTER TABLE ONLY public.core_memberships FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: core_tenants; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -71,6 +90,14 @@ ALTER TABLE ONLY public.ar_internal_metadata
 
 
 --
+-- Name: core_memberships core_memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.core_memberships
+    ADD CONSTRAINT core_memberships_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: core_tenants core_tenants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -95,10 +122,53 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: index_core_memberships_on_tenant_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_core_memberships_on_tenant_id ON public.core_memberships USING btree (tenant_id);
+
+
+--
+-- Name: index_core_memberships_on_tenant_id_and_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_core_memberships_on_tenant_id_and_user_id ON public.core_memberships USING btree (tenant_id, user_id);
+
+
+--
 -- Name: index_core_users_on_email_digest; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX index_core_users_on_email_digest ON public.core_users USING btree (email_digest);
+
+
+--
+-- Name: core_memberships fk_rails_53826ef69d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.core_memberships
+    ADD CONSTRAINT fk_rails_53826ef69d FOREIGN KEY (tenant_id) REFERENCES public.core_tenants(id);
+
+
+--
+-- Name: core_memberships fk_rails_5c778b7c29; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.core_memberships
+    ADD CONSTRAINT fk_rails_5c778b7c29 FOREIGN KEY (user_id) REFERENCES public.core_users(id);
+
+
+--
+-- Name: core_memberships; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.core_memberships ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: core_memberships tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_isolation ON public.core_memberships USING ((tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)) WITH CHECK ((tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid));
 
 
 --
@@ -108,6 +178,7 @@ CREATE UNIQUE INDEX index_core_users_on_email_digest ON public.core_users USING 
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261128100000'),
 ('20261128090000'),
 ('20261127090000');
 

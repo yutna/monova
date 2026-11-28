@@ -23,6 +23,8 @@ module Monova
       validates :email_digest, presence: true, uniqueness: true
       validates :password_digest, presence: true
 
+      has_many :memberships
+
       # AUTH-07: finds a user by email in any case, with no tenant set.
       def self.find_by_email(email)
         find_by(email_digest: email_digest(email))
