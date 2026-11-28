@@ -113,20 +113,23 @@ owner's GitHub account, a GitHub approval cannot separate them; the
   its canary, #167) and #166 (the finding admission rule in protocol
   §7, #168), #162 (core's base record, table defaults and
   `core_tenants`, #169) and #163 (the per-transaction tenancy helper,
-  #171). Open: #164 (the tenant policy helper, `TenantOwned` and the
-  DATA-03 catalog check) is with the implementer, draft PR #173. It is
-  the last open v0.8.0 issue.
+  #171) and #164 (the tenant policy helper, `TenantOwned` and the
+  DATA-03 catalog check, #173). The first v0.8.0 gate found two
+  blocking (S2) findings, now in v0.8.0: #175 (CI replays every
+  migration under strong_migrations and diffs `structure.sql`) is with
+  the implementer, and #176 (the tenancy helper refuses a second tenant
+  in one transaction) waits for it.
 - The loop driver is installed as the `monova-loop` systemd user timer
   (from 2026-11-26); see my-notes
   `manuals/asus-nuc-server/13-monova-loop.md`.
 
 ## Next steps
 
-1. Review PR #173 (#164) once its implementer run has ended, and merge
-   it.
-2. Plan v0.9.0 from the specification (v0.8.0 is under way); never plan
-   further ahead.
-3. When every v0.8.0 issue is closed, run the gate with a fresh
+1. Review the pull request for #175 once its implementer run has
+   ended, and merge it; then dispatch #176 and review it.
+2. Plan v0.9.0 from the specification when no implementer runs; never
+   plan further ahead.
+3. When #175 and #176 are closed, rerun the v0.8.0 gate with a fresh
    subagent that applies the finding admission rule; when it passes,
    bump `VERSION` to 0.8.0 through an implementer issue and close the
    milestone.
