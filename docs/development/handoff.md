@@ -114,11 +114,11 @@ owner's GitHub account, a GitHub approval cannot separate them; the
   #181).
 - v0.9.0 is planned (8 issues); its scope froze when #191 merged.
   Done: #184 (the tenancy helper's tenant tracking redesigned from
-  AUTH-12, #191) and #189 (the enforcement matrix and handoff, #192).
-  Open, from the second gate's S3 findings: #185 (the rollback check
-  compares the schema before and after; with the implementer, draft
-  pull request #193) and #186 (the DATA-03 check covers every policy
-  and view). Core's tables and data classes: #187 (DATA-11), #188
+  AUTH-12, #191), #185 (the rollback check compares the schema before
+  and after, #193) and #189 (the enforcement matrix and handoff, #192).
+  Open, from the second gate's S3 findings: #186 (the DATA-03 check
+  covers every policy and view; with the implementer, draft pull
+  request #195). Core's tables and data classes: #187 (DATA-11), #188
   (global users) and #190 (memberships).
 - `12_enforcement.md` marks DATA-03 `kernel` and DATA-04 and DATA-05
   `enforced`.
@@ -128,7 +128,7 @@ owner's GitHub account, a GitHub approval cannot separate them; the
 
 ## Next steps
 
-1. Finish the v0.9.0 implementer issues in order: #185, #186, #187,
+1. Finish the v0.9.0 implementer issues in order: #186, #187,
    #188, #190, honouring each issue's `Depends on`.
 2. Gate v0.9.0 when every issue is closed, then bump `VERSION` and
    close the milestone.
