@@ -1,0 +1,10 @@
+# DATA-11: the data class of every column of core's tables. The kernel
+# spec in engines/core/spec/monova/core/data_classes_spec.rb compares this
+# file with the PostgreSQL catalog, so a new column cannot arrive without a
+# class. The five classes are public, internal, personal, sensitive and
+# secret; a column whose class is unclear is classed higher, not lower.
+core_tenants:
+  id: internal
+  name: internal
+  created_at: internal
+  updated_at: internal
