@@ -8,3 +8,10 @@ core_tenants:
   name: internal
   created_at: internal
   updated_at: internal
+core_users:
+  id: internal
+  email: personal
+  email_digest: secret
+  password_digest: secret
+  created_at: internal
+  updated_at: internal

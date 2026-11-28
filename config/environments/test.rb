@@ -50,4 +50,12 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # DATA-12: the same fixed, non-secret key material as development, so the
+  # suite needs no credentials file. Production reads every key from
+  # credentials instead.
+  config.active_record.encryption.primary_key = "monova-development-primary-key00"
+  config.active_record.encryption.deterministic_key = "monova-development-deterministic"
+  config.active_record.encryption.key_derivation_salt = "monova-development-salt-value000"
+  config.x.core.email_digest_key = "monova-development-digest-key000"
 end

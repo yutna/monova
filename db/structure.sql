@@ -40,6 +40,20 @@ CREATE TABLE public.core_tenants (
 
 
 --
+-- Name: core_users; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.core_users (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    email text NOT NULL,
+    email_digest text NOT NULL,
+    password_digest text NOT NULL,
+    created_at timestamp(6) with time zone NOT NULL,
+    updated_at timestamp(6) with time zone NOT NULL
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -65,11 +79,26 @@ ALTER TABLE ONLY public.core_tenants
 
 
 --
+-- Name: core_users core_users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.core_users
+    ADD CONSTRAINT core_users_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.schema_migrations
     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: index_core_users_on_email_digest; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_core_users_on_email_digest ON public.core_users USING btree (email_digest);
 
 
 --
@@ -79,5 +108,6 @@ ALTER TABLE ONLY public.schema_migrations
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261128090000'),
 ('20261127090000');
 
