@@ -33,6 +33,36 @@ RSpec.describe Monova::Core::Tenancy do
     nil
   end
 
+  def tenants_seen_in_outer_transaction(*tenant_ids)
+    seen = []
+    ActiveRecord::Base.transaction do
+      tenant_ids.each { |id| described_class.with_tenant(id) { seen << current_tenant } }
+    end
+    seen
+  end
+
+  def tenant_seen_in_outer_transaction(id)
+    ActiveRecord::Base.transaction { described_class.with_tenant(id) { current_tenant } }
+  end
+
+  def second_call_inside_savepoint(first_id, second_id)
+    ActiveRecord::Base.transaction do
+      described_class.with_tenant(first_id) { nil }
+      ActiveRecord::Base.transaction(requires_new: true) do
+        described_class.with_tenant(second_id) { nil }
+      end
+    end
+  end
+
+  def first_call_inside_savepoint(first_id, second_id)
+    ActiveRecord::Base.transaction do
+      ActiveRecord::Base.transaction(requires_new: true) do
+        described_class.with_tenant(first_id) { nil }
+      end
+      described_class.with_tenant(second_id) { nil }
+    end
+  end
+
   def failing_query
     connection.execute("SELECT 1 / 0")
   end
@@ -70,6 +100,39 @@ RSpec.describe Monova::Core::Tenancy do
         described_class.with_tenant(other_tenant_id) { nil }
       end
     end.to raise_error(described_class::TenantConflict)
+  end
+
+  it "refuses sequential calls with different tenants inside one outer transaction" do
+    expect { tenants_seen_in_outer_transaction(tenant_id, other_tenant_id) }
+      .to raise_error(described_class::TenantConflict)
+  end
+
+  it "refuses a different tenant with a savepoint around the second call" do
+    expect { second_call_inside_savepoint(tenant_id, other_tenant_id) }
+      .to raise_error(described_class::TenantConflict)
+  end
+
+  it "refuses a different tenant with a savepoint around the first call" do
+    expect { first_call_inside_savepoint(tenant_id, other_tenant_id) }
+      .to raise_error(described_class::TenantConflict)
+  end
+
+  it "allows sequential calls with the same tenant inside one outer transaction" do
+    expect(tenants_seen_in_outer_transaction(tenant_id, tenant_id)).to eq([ tenant_id, tenant_id ])
+  end
+
+  it "allows different tenants without an outer transaction" do
+    seen = [ tenant_id, other_tenant_id ].map do |id|
+      described_class.with_tenant(id) { current_tenant }
+    end
+
+    expect(seen).to eq([ tenant_id, other_tenant_id ])
+  end
+
+  it "allows different tenants in separate outer transactions" do
+    seen = [ tenant_id, other_tenant_id ].map { |id| tenant_seen_in_outer_transaction(id) }
+
+    expect(seen).to eq([ tenant_id, other_tenant_id ])
   end
 
   it "raises for a nil tenant" do
