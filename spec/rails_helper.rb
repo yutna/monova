@@ -19,6 +19,10 @@ RSpec.configure do |config|
   config.infer_spec_type_from_file_location!
   config.filter_rails_from_backtrace!
 
+  # Factories build records through the concise `build` and `create` methods
+  # (TS-03).
+  config.include FactoryBot::Syntax::Methods
+
   # Examples roll back their changes, and no spec loads Rails fixtures
   # (TS-03).
   config.use_transactional_fixtures = true

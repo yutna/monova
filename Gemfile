@@ -17,6 +17,10 @@ gem "solid_cable", "4.1.0"
 # code still serves requests (DATA-05).
 gem "strong_migrations", "2.8.0"
 
+# Passwords: has_secure_password hashes and checks a user's password with
+# bcrypt (AUTH-02).
+gem "bcrypt", "3.1.22"
+
 # Deployment: release this application as a Docker container.
 gem "kamal", "2.12.0", require: false
 
